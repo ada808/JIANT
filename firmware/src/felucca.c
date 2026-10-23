@@ -38,7 +38,7 @@
 #define FELUCCA_ID "FM-1_900"    /* package identity (build.py: the .fwsc marker string) */
 #endif
 #ifndef FELUCCA_VERSION
-#define FELUCCA_VERSION "v0.9.9-beta3" /* CPU fixes preview, based on stable JIANT 0.9.9 */
+#define FELUCCA_VERSION "v0.9.9-beta4" /* CPU fixes preview, based on stable JIANT 0.9.9 */
 #endif
 #if FELUCCA_OTA && !FELUCCA_FLASH
 #error "FELUCCA_OTA needs FELUCCA_FLASH"
