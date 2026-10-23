@@ -6,9 +6,10 @@
  * busy: the flash driver), .c1_text (the second core's loop), .hot_text (core 0's hottest audio code). A call reaches
  * +-4 MiB (pi32v2 imm23 x 2, no long calls in this compiler): RAM code there reaches the whole XIP image (build.py
  * checks the margin); at 0x01C00000 it reached none of it.
- * LOWBUF 0x01C00000..0x01C07000 (0.6.78; 0.6.82: 4 KiB more, the steps grew): main-loop buffers (undo, the song
+ * LOWBUF 0x01C00000..0x01C08000 (0.6.78; 0.6.82: 4 KiB more, the steps grew): main-loop buffers (undo, the song
  * section's stage; the project scratch until 0.8.4 and the fonts' decode tables in 0.8.4, both in the pool since
- * 0.8.5), zeroed at boot; 0x01C07000..0x01C08000 stays for RAM-run debug.
+ * 0.8.5; 0.9.9-beta4: the fonts' tables and the user presets' banks back here, 9 KiB of the pool given to RAMTEXT),
+ * zeroed at boot. 0x01C07000..0x01C08000 was kept for RAM-run debug until 0.9.9-beta4 (LOWBUF took it).
  * RAM  : .data/.bss (96 KiB)
  * POOL : big zero-initialised buffers (FX lines, canvases), section .pool
  * STACKS with 256-byte guard bands; NOINIT survives resets and UBOOT entry.
@@ -16,12 +17,15 @@
 MEMORY
 {
     XIP    (rx)  : ORIGIN = 0x02000120, LENGTH = 0x8DFBC
-    LOWBUF (rw)  : ORIGIN = 0x01C00000, LENGTH = 0x7000
+    LOWBUF (rw)  : ORIGIN = 0x01C00000, LENGTH = 0x8000
     RAM    (rwx) : ORIGIN = 0x01C08000, LENGTH = 96K
-    POOL   (rw)  : ORIGIN = 0x01C20000, LENGTH = 0x4FC00
-    RAMTEXT (rwx): ORIGIN = 0x01C6FC00, LENGTH = 0x6400   /* (0.6.97, 0.7.0: up 4 KiB each, the image grew: a call from here must
+    POOL   (rw)  : ORIGIN = 0x01C20000, LENGTH = 0x4D800
+    RAMTEXT (rwx): ORIGIN = 0x01C6D800, LENGTH = 0x8800   /* (0.6.97, 0.7.0: up 4 KiB each, the image grew: a call from here must
                                                            * reach its end; the user stack 4 KiB shorter each time, 15.75 KiB;
-                                                           * 0.9.9-stab, as 0.9.12: 1 KiB lower, from the pool: the 320 MHz switch) */
+                                                           * 0.9.9-stab, as 0.9.12: 1 KiB lower, from the pool: the 320 MHz switch;
+                                                           * 0.9.9-beta4: 9 KiB lower, from the pool (8 KiB of its main-loop
+                                                           * buffers moved to LOWBUF): the delay's, the reverbs' and the
+                                                           * chorus's block code in RAM, out of the I-cache the engines share) */
     NOINIT (rw)  : ORIGIN = 0x01C7C000, LENGTH = 0x3D50
 }
 SECTIONS

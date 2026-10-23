@@ -2327,13 +2327,20 @@ static uint8_t mc_mask_last;                             /* the parts core 1 had
 static uint32_t mc_jobs;                                 /* (0.6.72) blocks core 1 rendered parts in (console status) */
 static void mix_part_m(track_t *t, uint32_t n);         /* (below) */
 #define MC_FX 0x80u                                       /* (0.6.75) mc_job: the buses too */
+#if FELUCCA_HOTRAM
+static void fx_run0(uint32_t n);                         /* (below) */
+#define fx_run fx_run0                                   /* (the tests' name for it) */
+#else
 static void fx_run(uint32_t n);                          /* (below) */
+#endif
 static __attribute__((noinline)) void mc_job(uint32_t a)  /* core 1: the buses (MC_FX), the parts of mask a & 0x3F, a >> 8
                                                          * samples */
 {
     uint32_t i, n = a >> 8;
     if (a & MC_FX)
-        fx_run(n);
+        fx_run0(n);                                     /* (0.9.9-beta4) the RAM copy on this core too: its block code (the
+                                                         * delay, the reverbs, the chorus) is in RAM for either core now
+                                                         * (build.py HOT_FNS), out of the I-cache the engines share */
     for (i = 0; i < n; i++)
         c1_mix.l[i] = c1_mix.r[i] = c1_mix.c[i] = c1_mix.d[i] = c1_mix.rv[i] = c1_mix.sl[i] = c1_mix.sr[i] = 0;
     for (i = 0; i < NPART; i++)
@@ -2483,10 +2490,10 @@ static inline __attribute__((always_inline)) void fx_run_t(uint32_t n)
     d = MC_TICKS() - t0;
     mc_fx_tk = d > mc_fx_tk ? mc_fx_tk + ((d - mc_fx_tk) >> 1) : mc_fx_tk - ((mc_fx_tk - d) >> 3);
 }
-static void fx_run(uint32_t n) { fx_run_t(n); }         /* (core 1: from the flash) */
-#if FELUCCA_HOTRAM                                       /* (0.6.78) core 0's copy, in RAM */
+#if FELUCCA_HOTRAM                                       /* (0.6.78) the copy in RAM: core 0's; 0.9.9-beta4: core 1's too */
 static __attribute__((noinline)) void fx_run0(uint32_t n) { fx_run_t(n); }
 #else
+static void fx_run(uint32_t n) { fx_run_t(n); }         /* (from the flash) */
 #define fx_run0 fx_run
 #endif
 
