@@ -2256,6 +2256,8 @@ static void ui_draw(void)
     static uint8_t counting;
     style_apply();
     ui.frame++;
+    if (!ANIM_OFF())                                    /* (0.9.9-beta4) the animation's frame (ui.c anim_fr): this one, */
+        anim_at = ui.frame;                             /* or the last it moved on while held */
     if (counting != (uint8_t)seq_counting()) {          /* a count-in began or ended: the page drawn again after it */
         counting = (uint8_t)seq_counting();
         ui.force = 1;

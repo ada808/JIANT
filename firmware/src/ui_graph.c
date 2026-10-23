@@ -1300,7 +1300,7 @@ static int drift_on(void)
     uint32_t g = cur_page()->graph;
     if (UI_NO_DRIFT)
         return 0;
-    return !ui.home && !sys_load && !(ui_prefs & PREF_ANIM_OFF) && strip_kind() == SK_NONE && !roll_view(cur_page()) &&
+    return !ui.home && !sys_load && !ANIM_OFF() && strip_kind() == SK_NONE && !roll_view(cur_page()) &&
            g != GR_ROLL && g != GR_SHAPE && g != GR_COMP && g != GR_FUGUE &&   /* (0.8.3: LENTE's step, the heads) */
            g != GR_STEPS && g != GR_CHANCE && g != GR_BROWSE && g != GR_USER && g != GR_SLOTS && g != GR_EVENTS &&
            g != GR_SONG && g != GR_TOOLS && g != GR_PATS;
@@ -1393,19 +1393,20 @@ static uint32_t graph_signature(void)
         h = str_hash(h ^ 0x70A57u, ui.msg);
     if (ui.confirm == CF_DICE_ALL)                   /* (0.8.5) GEN: its settings, its page (0.9.0: MENU > LARGE's strip is
                                                       * HOME's scope there: live) */
-        return h ^ gen_draw_sig() ^ (strip_kind() == SK_SCOPE ? ui.frame / 2u * 2654435761u : 0u);
-    if (ui.home)
-        return h ^ (ui.frame / 2u) ^ (home_level() * 7u + home_set()) * 104729u;   /* the beings: every other frame */
+        return h ^ gen_draw_sig() ^ (strip_kind() == SK_SCOPE ? anim_fr / 2u * 2654435761u : 0u);
+    if (ui.home)                                     /* the beings: every other frame (0.9.9-beta4: of the animation's, anim_fr:
+                                                      * held, or ANIM OFF, the band is not drawn again) */
+        return h ^ (anim_fr / 2u) ^ (home_level() * 7u + home_set()) * 104729u;
     h ^= (uint32_t)pg->graph * 131u + TSEL->eng_req + song.sel * 7777u + ui.page * 1291u;
     if (strip_kind() == SK_TITLE)                    /* MENU > LARGE: the page's title (its engine, its number) */
         return h ^ 0x5A17u;
-    if ((pg->graph == GR_NONE && !fx_on()) || pg->graph == GR_ARP || pg->graph == GR_MOTION) h ^= ui.frame / 2u;   /* (0.8.5:
+    if ((pg->graph == GR_NONE && !fx_on()) || pg->graph == GR_ARP || pg->graph == GR_MOTION) h ^= anim_fr / 2u;   /* (0.8.5:
                                                          * FX's lens pictures change with their values, */
     if (fx_on() && (song.playing || bg_energy() > 2))   /* .. and with the sound while it sounds: FX live) */
-        h ^= ui.frame / 2u * 2246822519u;
-    if (pg->graph == GR_LFO)                         /* (JIANT 0.5) the LFO runs: its phase, its level */
+        h ^= anim_fr / 2u * 2246822519u;
+    if (pg->graph == GR_LFO && !ui_hold)             /* (JIANT 0.5) the LFO runs: its phase, its level (0.9.9-beta4: held under load) */
         h ^= (t->lfo_ph >> 23) * 2654435761u ^ (uint32_t)(t->lfo_val * t->lfo_fade >> 22);
-    if (pg->graph == GR_ADSR)                        /* the envelope's dot: every voice's stage and level */
+    if (pg->graph == GR_ADSR && !ui_hold)            /* the envelope's dot: every voice's stage and level */
         for (i = 0; i < NVOICE; i++)
             h = (h ^ ((uint32_t)t->v[i].stage << 24 | (uint32_t)t->v[i].env >> 16)) * 16777619u;
     for (i = 0; i < P_COUNT; i++)
@@ -1413,7 +1414,7 @@ static uint32_t graph_signature(void)
     h ^= (uint32_t)TSEL->preset * 7u + (uint32_t)song.g[G_SLOT] * 13u + TSEL->user * 257u + up_gen * 7919u + ui.uslot * 104729u +
          ui.ppick * 1299709u;
     if (pg->graph == GR_MSEQ)                        /* (JIANT) the step picked, the one playing, the level now */
-        h ^= (ms_ui_step + 1u) * 40503u + (song.playing ? ui.frame * 2654435761u : 0u);
+        h ^= (ms_ui_step + 1u) * 40503u + (song.playing ? anim_fr * 2654435761u : 0u);
     if (pg->graph == GR_SONG) {
         for (uint32_t r = 0; r < CHAIN_ROWS; r++)
             h = (h ^ (song_idx.scene[song_cur][r].on * (r + 1u))) * 16777619u;
@@ -1435,7 +1436,7 @@ static uint32_t graph_signature(void)
         h ^= (pd_level() + 1u) * 668265263u;
         if ((pd_cur() == PD_ENV && pd_level() == 0u) || (pd_cur() == PD_MOD && pg->graph != GR_MSEQ))   /* (MOD's pulse,
                                                          * LFO DEST's LFO) */
-            h ^= ui.frame / 2u * 2654435761u;
+            h ^= anim_fr / 2u * 2654435761u;
     }
     if ((pg->graph == GR_SLCR || pg->graph == GR_SLPIT) && song.g[G_SLMODE])   /* the SLICER's step playing */
         h ^= (sl.idx + 1u) * 2654435761u;
@@ -1519,7 +1520,7 @@ static uint32_t graph_signature(void)
         lib_poll();
         h = (h ^ (save_level() + 1u) * 2654435761u ^ lib.next * 40503u ^ lib.gen) * 16777619u;
         if (pg->graph == GR_USER || pg->graph == GR_BROWSE)
-            h ^= bg_energy() > 2 ? ui.frame * 2654435761u : 0u;   /* (the being moves with the sound) */
+            h ^= bg_energy() > 2 ? anim_fr * 2654435761u : 0u;   /* (the being moves with the sound) */
         if (pg->graph == GR_SONG) {                  /* (ARRANGE: as SLOTS', the rows and where the song is) */
             for (i = 0; i < 4u; i++) h ^= (uint32_t)graph_project_used(i) << (20u + i);
             h += graph_pname_sig + (uint32_t)(live.cur + 1) * 40503u;

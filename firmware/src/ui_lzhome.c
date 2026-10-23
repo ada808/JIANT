@@ -76,7 +76,7 @@ static uint32_t eco_step(void)
         }
     }
     if (dt > 8u) dt = 8u;
-    if (ui_prefs & PREF_ANIM_OFF) dt = 0;
+    if (ANIM_OFF()) dt = 0;                             /* (0.9.9-beta4: and held under load, ui.c ui_hold) */
     eco.f0 = ui.frame;
     for (c = 0; c < ECO_N; c++) {
         track_t *t = &trk[c];
@@ -244,7 +244,7 @@ static uint32_t routes_count(void)                      /* the MOD slots whose S
  * numbers and the MACROS words in the middle strip only (words), clear of the floating ones */
 static void eco_draw(int32_t x0, int32_t y0, int words)
 {
-    uint32_t c, k, still = (ui_prefs & PREF_ANIM_OFF) != 0u;
+    uint32_t c, k, still = ANIM_OFF() != 0;
     int32_t bx[ECO_N], by[ECO_N], bot = eco_bot(), hud = hud_home();
     (void)eco_step();                                   /* (the swim, once a frame) */
     (void)bg_energy();                                  /* (the output's level kept as it was read: once a frame) */
@@ -252,8 +252,8 @@ static void eco_draw(int32_t x0, int32_t y0, int words)
     cv_oy = -y0;
     for (k = 0; k < 22u; k++) {                         /* the cytoplasm: granules drifting */
         uint32_t h = k * 2654435761u;
-        int32_t gx = 10 + (int32_t)((h >> 8) % 220u + ui.frame * (1u + (h >> 28)) / 6u) % 220;
-        int32_t gy = 6 + (int32_t)(((h >> 16) % (uint32_t)(bot + 6)) + (still ? 0 : (uint32_t)(bg_sin((uint32_t)(ui.frame * 300u + h)) >> 13))) %
+        int32_t gx = 10 + (int32_t)((h >> 8) % 220u + anim_fr * (1u + (h >> 28)) / 6u) % 220;   /* (still: where they were) */
+        int32_t gy = 6 + (int32_t)(((h >> 16) % (uint32_t)(bot + 6)) + (still ? 0 : (uint32_t)(bg_sin((uint32_t)(anim_fr * 300u + h)) >> 13))) %
                          (uint32_t)(bot + 6);
         cv_rect(gx - x0, gy, 1 + (int32_t)(h >> 31), 1 + (int32_t)(h >> 31), ux_mix(T_SURF, T_THEME, 22 + (int32_t)(h >> 29) * 4));
     }

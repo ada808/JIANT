@@ -123,8 +123,8 @@ static void graph_mod_net(const track_t *t)
         const char *u = "";
         if (on) {
             og_quad_a(48 * 16, sy * 16, 110 * 16, sy * 16, 158 * 16, (y + 11) * 16, lc, 16u, 256);
-            if (sel && !(ui_prefs & PREF_ANIM_OFF)) {   /* (the pulse: a quadratic's point at u = frame) */
-                int32_t q = (int32_t)(ui.frame * 6u % 256u), r = 256 - q;
+            if (sel && !ANIM_OFF()) {               /* (the pulse: a quadratic's point at u = frame) */
+                int32_t q = (int32_t)(anim_fr * 6u % 256u), r = 256 - q;
                 og_node((48 * r * r + 2 * 110 * r * q + 158 * q * q) >> 12, (sy * r * r + 2 * sy * r * q + (y + 11) * q * q) >> 12,
                         2, T_TEXT);
             }

@@ -190,7 +190,7 @@ static int32_t vx_level(const track_t *t, uint32_t k, int32_t en_home)
     if (dm > 100u) dm = 100u;                            /* (a pause: no jump) */
     if (vxs.en[k])                                       /* (0.9.6) the mock-up's time: 30 frames a second while it sounds */
         vxs.mt[k] += dm * 7680u / 1000u;
-    if (ui_prefs & PREF_ANIM_OFF)
+    if (ANIM_OFF())
         return vxs.en[k] = 0;                            /* (ANIM OFF: at rest) */
     if (en_home >= 0)
         v = en_home;                                     /* (HOME: its own, eco_step's) */
@@ -748,7 +748,7 @@ static void vx_kit(const track_t *t, int32_t cx, int32_t cy, int32_t s, int32_t 
     for (i = 0; i < 8; i++) {                            /* each lane's hit now: its envelope (velocity, accent, decay) */
         int32_t a = K ? K[i].age : 255;
         lt[i] = dx_lane_muted((uint32_t)i) ? -1 : i == sel;
-        e[i] = K && K[i].x.live && lt[i] >= 0 && !(ui_prefs & PREF_ANIM_OFF) ? clamp(K[i].x.ea >> 22, 0, 256) : 0;
+        e[i] = K && K[i].x.live && lt[i] >= 0 && !ANIM_OFF() ? clamp(K[i].x.ea >> 22, 0, 256) : 0;
         if (K && K[i].dm == 2u) e[i] = e[i] * 2 / 3;   /* (GHOST: a small squash) */
         if (K && a < vxs.age[i] && e[i]) {               /* a new hit (a FLAM's two, a ratchet's each) */
             vxs.hitm[i] = now;

@@ -73,7 +73,27 @@ static uint32_t up_gen;                      /* bumped on every user bank change
 #define PREF_ANIM_OFF 2u                       /* MENU > ANIM OFF (#46): values snap (no rolling digits, no glide) */
 /* (0.6.57) values snap: MENU > ANIM OFF, or LOAD LITE / ECO (the rolling digits, the roll's and the tabs' glides are
  * frames drawn again for a look: the time goes to the keys and knobs instead; the beings still move) */
-#define ANIM_SNAP() ((ui_prefs & PREF_ANIM_OFF) || sys_load)
+/* (0.9.9-beta4) the UI held while the music plays with the render's averaged share of a half (voice.c load_avg_q8, ~93
+ * ms) past UI_HOLD_ON %: frames every 50 ms instead of 15 and the animation off, as MENU > ANIM OFF (the HOME beings,
+ * the engines' creatures, the live graphs still: their signatures stop changing, nothing is drawn again), until it
+ * falls under UI_HOLD_OFF % or the music stops (ui_hold_poll, main.c: once a frame). The I-cache is one for both cores
+ * and the UI: a frame drawn is the engines' code evicted (Kirill's audit, LOOM-8) */
+static uint8_t ui_hold;
+static uint32_t anim_at;                               /* the last frame the animation moved on (ui_draw) .. */
+#define UI_HOLD_ON 60u
+#define UI_HOLD_OFF 50u
+#define ANIM_OFF() ((ui_prefs & PREF_ANIM_OFF) || ui_hold)
+#define anim_fr (ANIM_OFF() ? anim_at : ui.frame)      /* .. the animation's frame: ui.frame while it moves, that one while
+                                                        * still (the same frame draws the same picture, held or not) */
+#define ANIM_SNAP() (ANIM_OFF() || sys_load)
+static void ui_hold_poll(void)
+{
+    uint32_t pct = load_avg_q8 >> 8;
+    if (!song.playing || pct < UI_HOLD_OFF)
+        ui_hold = 0;
+    else if (pct >= UI_HOLD_ON)
+        ui_hold = 1;
+}
 #define PREF_ACCEL_OFF 4u                      /* MENU > KNOB ACCEL OFF (#52; JIANT: ON by default, the bit now means OFF):
                                                 * fast turns of wide values x2..x16 */
 #define PREF_USB_FIXED 8u                      /* MENU > USB LEVEL FIXED: USB audio at the full level, MASTER after */
