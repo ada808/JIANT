@@ -85,7 +85,7 @@ static inline uint32_t drw_ratio(uint32_t k, uint32_t x)
 }
 
 /* rotor speeds as phase increments per block (CTL samples): Hz * CTL / FS * 2^32 */
-#define DRW_HZ(h) ((int32_t)((h) * 3116457.0))
+#define DRW_HZ(h) ((int32_t)((h) * 3116457.0 * (CTL / 32.0)))
 static const int32_t DRW_ROT_SPD[2][3] = {
     {0, DRW_HZ(0.8), DRW_HZ(6.7)},   /* high rotor: OFF (stops), SLOW, FAST */
     {0, DRW_HZ(0.7), DRW_HZ(5.8)},   /* low rotor */
@@ -203,7 +203,7 @@ static void wheel_block(track_t *t)
         if (rdep < 128)
             T->fm[k] = (T->fm[k] * rdep) >> 7;
     }
-    T->rwet += ((rot ? 32767 : 0) - T->rwet) >> 5;      /* ~25 ms in or out */
+    T->rwet += ((rot ? 32767 : 0) - T->rwet) >> (10 - CTL_LOG2);   /* ~25 ms in or out */
     T->dust = 127 - clamp(p[P_WDUST], 0, 127);          /* (0.7.8) DUST, 127 stored = 0 %: on the first sounding voice */
     if (T->dust)
         drw_dust_pick(t, T);
@@ -264,12 +264,12 @@ static void wheel_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const
                 ph += inc;
                 acc[i] += (SINE[ph >> 22] * g1) >> 15;
             }
-        } else {                                        /* gain ramp over the block (CTL = 32) */
-            int32_t gq = g0 << 5, dg = g1 - g0;
+        } else {                                        /* gain ramp over the block (CTL samples) */
+            int32_t gq = g0 << CTL_LOG2, dg = g1 - g0;
             for (i = 0; i < n; i++) {
                 ph += inc;
                 gq += dg;
-                acc[i] += (SINE[ph >> 22] * (gq >> 5)) >> 15;
+                acc[i] += (SINE[ph >> 22] * (gq >> CTL_LOG2)) >> 15;
             }
         }
         V->ph[k] = ph;

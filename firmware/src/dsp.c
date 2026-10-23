@@ -113,7 +113,7 @@ static inline int32_t tsvf_lp(const tsvf_t *c, int32_t in, int32_t *ic1, int32_t
 /* amplitude ramp over the block. Blocks are always CTL long, so x / CTL is a
  * shift (rounded towards zero, as a division); the compiler at -Os keeps
  * even constant divisions as a hardware divide, once per sample and voice */
-#define CTL_LOG2 5
+#define CTL_LOG2 6
 #if (1 << CTL_LOG2) != CTL
 #error "CTL_LOG2 does not match CTL"
 #endif

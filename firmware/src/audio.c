@@ -110,7 +110,7 @@ static __attribute__((noinline)) void shed_voice(void)
     for (p = 0; p < NPART; p++)
         for (i = 0; i < NVOICE; i++) {
             voice_t *v = &trk[p].v[i];
-            if (v->active && !voice_held(&trk[p], v) && v->stage != 4u && (!best || v->env < best->env))
+            if (v->active && !voice_held(&trk[p], v) && v->stage != 4u && !v->sub && (!best || v->env < best->env))
                 best = v;
         }
     if (best) {

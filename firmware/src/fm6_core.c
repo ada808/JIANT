@@ -26,12 +26,12 @@
  *     arrive as the note's pitch in 1/16 semitone plus a fine factor: fm6_note_logfreq);
  *   - the sine is Felucca's 1024-point SINE (Q15), linearly interpolated, scaled by the Q24 gain to msfa's
  *     Q24 operator output;
- *   - a block is CTL (32) samples (msfa: 64);
+ *   - a block is CTL (64; 32 until 0.9.9 ctl64) samples (msfa: 64);
  *   - no portamento, no operator switches, no controllers (mod wheel, breath, ...): Felucca's matrix does that.
  * The patch is the 155-byte single-voice layout (FP_* below), operator 0 = the sixth operator, as msfa. */
 
 #define FM6_N CTL
-#define FM6_LG_N 5
+#define FM6_LG_N 6
 #if (1 << FM6_LG_N) != FM6_N
 #error "FM6_LG_N does not match CTL"
 #endif

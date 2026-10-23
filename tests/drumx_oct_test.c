@@ -54,9 +54,11 @@ static uint32_t now_s;                                  /* samples since the tes
 static uint32_t run_b(uint32_t nb, uint32_t *at, uint32_t nat, uint32_t *nh)
 {
     uint32_t b, v0;
+    static int32_t o[2u * CTL];
     for (b = 0; b < nb; b++) {
         v0 = vage;
-        events_block(CTL);
+        mix_block(o, CTL);                              /* (0.9.9 ctl64: the parts rendered too: a hit inside the block
+                                                         * starts its lane in the render, voice.c track_render) */
         for (; v0 < vage; v0++) {
             if (at && *nh < nat)
                 at[*nh] = now_s;

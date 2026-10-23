@@ -3,7 +3,7 @@
 # Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
 """Fixed-point lookup tables for FELUCCA (no float on the target).
 
-FS = 44100 Hz, control rate = every CTL (32) samples. All curves map a
+FS = 44100 Hz, control rate = every CTL (64) samples (0.9.9 ctl64: was 32). All curves map a
 0..127 parameter value to the unit the DSP needs, plus a display table.
 """
 import math
@@ -11,7 +11,7 @@ import sys
 from pathlib import Path
 
 FS = 44100
-CTL = 32
+CTL = 64
 
 
 def arr(name, ctype, vals, per=12):

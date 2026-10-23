@@ -518,6 +518,7 @@ static const engine_t ENG_FM6 = {
     .npresets = NELEM(FM6_PRESETS),
     .note_on = fm6_note_on,
     .render = fm6_render,
+    .whole = 1,                                         /* (ctl64) its operators render FM6_N at a time */
     .knob = {P_E2, P_E3, P_E4, P_E7},
     .poly = FM6_POLY,
     .block = fm6_block,

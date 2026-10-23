@@ -619,7 +619,7 @@ static sing_x_t sing_x[NTRK] __attribute__((section(".pool")));
 static const sing_t *sing_view(const track_t *t) { return &sing[(uint32_t)(t - trk) % NTRK]; }
 static uint32_t sing_phon(const sing_t *s) { return s->i < s->np ? s->ph[s->i] : PH_SIL; }
 
-static uint32_t sy_ms(uint32_t ms) { return (ms * 1411u + 512u) >> 10; }   /* ms -> blocks (32 samples) */
+static uint32_t sy_ms(uint32_t ms) { return (ms * (1411u * 32u / CTL) + 512u) >> 10; }   /* ms -> blocks (CTL samples) */
 
 /* the phrase's length: the NOTE steps of the pattern (1..64; none: 8) */
 static uint32_t sy_phrase_len(const track_t *t)
@@ -1267,8 +1267,9 @@ static void sing_block(track_t *t)
     }
     s->gated = (uint8_t)gated;
     sy_tick(t, s, lang);
-    x->vb = (uint16_t)(x->vb + (x->vb < 0xFFFFu));       /* (0.9.8) the vibrato (formant_word_render): ~5.5 Hz */
-    x->vph = (uint16_t)(x->vph + 262u);
+    x->vb = (uint16_t)(x->vb + (CTL / 32u) * (x->vb < 0xFFFFu - CTL / 32u));   /* (0.9.8) the vibrato (formant_word_render):
+                                                                                * ~5.5 Hz; vb in blocks of 32 */
+    x->vph = (uint16_t)(x->vph + 262u * (CTL / 32u));
 }
 static void sing_note(const track_t *t) { sing[(uint32_t)(t - trk) % NTRK].pend = 1; }
 

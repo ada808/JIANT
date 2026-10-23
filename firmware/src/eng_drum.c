@@ -59,7 +59,7 @@ static drum_lane_t drum_kit[NPART][DV_NLANE];   /* (0.6.53: in .bss, was .pool: 
  * fades out (drum_render: DXG_FADE blocks, ~5 ms, no click), then ends */
 enum { DXG_KICK = 1, DXG_SNARE = 2, DXG_HAT = 4, DXG_PERC = 8, DXG_ALL = 15 };
 static const uint8_t DXG_LANE[DV_NLANE] = {DXG_KICK, DXG_SNARE, DXG_SNARE, DXG_HAT, DXG_HAT, DXG_PERC, DXG_PERC, DXG_PERC};
-#define DXG_FADE 8u
+#define DXG_FADE (256u / CTL)
 /* .. and each sound's own mute (EDIT held + black keys 1..8 on a DRUM track, ui_layer.c): bit 8 + lane */
 #define DXM_LANE(l) (1u << (8u + (l)))
 #define DXM_ALL 0xFF0Fu
@@ -74,10 +74,11 @@ static int16_t clip_eff, pnch_eff;   /* G_CLIP / G_PUNCH as the master plays the
  * held by the knee, the body denser and louder, the tail whole (the master's leveler does not pump on a spike). DUCK (G_DUCK, fx.c): a kick struck on any
  * DRUM track (its group not muted) ducks the other parts; duck_hit tells fx.c's mix_block */
 static volatile uint8_t duck_hit;
-#define DRUM_ATK_BLK 48u                                 /* (JIANT 0.4) ATK+ on a DRUM track: a hit's fade-in, blocks */
-static int32_t punch_gain(uint32_t age, int32_t p)     /* Q15 (32768 = 1, up to x1.7), p 0..100 */
+#define DRUM_ATK_BLK (1536u / CTL)                       /* (JIANT 0.4) ATK+ on a DRUM track: a hit's fade-in, blocks (~35 ms) */
+static int32_t punch_gain(uint32_t age, int32_t p)     /* Q15 (32768 = 1, up to x1.7), p 0..100; age in blocks */
 {
     int32_t up = 32768 + p * 150, body = 32768 + p * 230;
+    age *= CTL / 32u;                                    /* (the shape in blocks of 32) */
     return age < 4u ? up : age < 20u ? up + (body - up) * (int32_t)(age - 4u) / 16
                        : age < 160u ? body : age < 250u ? body + (32768 - body) * (int32_t)(age - 160u) / 90 : 32768;
 }
@@ -327,7 +328,7 @@ static dx_core_t dx_core[2];
 #define dx_xon (DXC.xon)
 static int8_t dx_pcur[NTRK][DV_NLANE];                   /* (0.6.81) each part's pans as they are, slewed toward the
                                                           * knob's: a turn of IMAGE jumped a sound across (a click) */
-#define DX_PSLEW 2                                       /* (a pan's step a block at most: across in ~45 ms) */
+#define DX_PSLEW (2 * (int32_t)CTL / 32)                 /* (a pan's step a block at most: across in ~45 ms) */
 /* IMAGE img 1..127 -> lane l's pan, -64..64: each sound on a sine of its own rate over the knob (1 to 9 turns), so a
  * sweep goes through the kit's placings one after another, every one coming back at the same value; the first 16 open
  * it from the middle; the kick a quarter as far (the low end stays centred) */
@@ -410,12 +411,11 @@ static __attribute__((noinline)) void drum_side_add(int32_t *y, int32_t *out, ui
     }
 }
 /* (0.6.81) .. its pan moving (IMAGE turned): both sides fed, each ramped across the block (only while it slews) */
-static __attribute__((noinline)) void drum_side_ramp(dx_core_t *dc, int32_t *y, int32_t *out, uint32_t n,
+static __attribute__((noinline)) void drum_side_ramp(int32_t *sl, int32_t *sr, int32_t *y, int32_t *out, uint32_t n,
                                                      const vmod_t *m, const int32_t *g, int32_t *d2, int32_t a)
 {
     uint32_t i;
     int32_t gl = g[0] << CTL_LOG2, dgl = g[1] - g[0], gr = g[2] << CTL_LOG2, dgr = g[3] - g[2];   /* (Q6 + CTL_LOG2) */
-    int32_t *sl = dc->sl, *sr = dc->sr;                  /* (this core's) */
     for (i = 0; i < n; i++, gl += dgl, gr += dgr) {
         int32_t s = y[i], o = voice_amp(s + (s >> 2), m, i) << 1;
         out[i] += o;
@@ -512,11 +512,12 @@ static void drum_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const 
     {
         int32_t *d2, g[4], a;
         dx_core_t *dc = &DXC;                            /* (0.7.8: this core's, read once) */
+        uint32_t vo = vo_off_c[MC_CPU() & 1u];           /* (ctl64) the voice's first sample in the part's block */
         if (dc->xon && drum_side_of(dc, (uint32_t)v->s[0], g, &d2, &a)) {   /* (0.6.48) IMAGE, SEND: the same loop */
             if (g[0] != g[1] || g[2] != g[3])
-                drum_side_ramp(dc, y, out, n, m, g, d2, a);
+                drum_side_ramp(dc->sl + vo, dc->sr + vo, y, out, n, m, g, d2 + vo, a);
             else
-                drum_side_add(y, out, n, m, g[0] ? dc->sl : g[2] ? dc->sr : dx_dump, g[0] | g[2], d2, a);
+                drum_side_add(y, out, n, m, (g[0] ? dc->sl : g[2] ? dc->sr : dx_dump) + vo, g[0] | g[2], d2 + vo, a);
             return;
         }
     }

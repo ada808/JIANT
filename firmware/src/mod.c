@@ -136,7 +136,7 @@ static int32_t mod_tsrc(const track_t *t, uint32_t s, int32_t lfo)
     case MS_STEP:
         return t->ms_v;
     case MS_NOISE:                                      /* (0.7.8) a random wander, a new point every ~46 ms, eased */
-        return drift_noise((uint32_t)(t - trk) * 7919u + 0x1234u, mns_clk, 6u);
+        return drift_noise((uint32_t)(t - trk) * 7919u + 0x1234u, mns_clk, 6u - (CTL_LOG2 - 5u));
     default:
         return macro_v[(s - MS_M1) & 3u] * 258;
     }
@@ -173,7 +173,7 @@ static __attribute__((noinline)) void ms_tick(track_t *t)
         t->ms_v = target;
         return;
     }
-    t->ms_v += ((target - t->ms_v) * (32767 / (1 + s * s / 8))) >> 15;   /* (a block's step: 1 / (1 + s^2 / 8)) */
+    t->ms_v += ((target - t->ms_v) * (32767 / (1 + s * s / (8 * (int32_t)CTL / 32)))) >> 15;   /* (a block of 32's step: 1 / (1 + s^2 / 8)) */
 }
 
 /* before a part's block (fx.c mix_part): the per-track offsets, the per-block destinations into t->p.

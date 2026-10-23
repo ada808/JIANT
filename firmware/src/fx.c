@@ -266,7 +266,7 @@ static __attribute__((noinline)) void clip_block(uint32_t n)
 #define DJF_HI 107                                      /* the high-pass's (~6 kHz) */
 #define DJF_KMAX 5689                                   /* damping (Q12) near the middle: Q 0.72 */
 #define DJF_KMIN 3724                                   /* .. at the ends: Q 1.1 */
-#define DJF_XB 8                                        /* blocks of a crossfade (8 x CTL = 256 samples) */
+#define DJF_XB (256 / CTL)                              /* blocks of a crossfade (256 samples) */
 #define DJF_SL 4                                        /* the mix << 4 in the states */
 #define DJF_MAX (1 << 28)                               /* (the states' bound: far past any mix, never an overflow) */
 /* v (-64..63, not 0) -> its cutoff (CUTOFF_HZ index, Q8) */
@@ -316,7 +316,7 @@ static __attribute__((noinline)) void djf_block(uint32_t n)
     w0 = djf.w;
     if (dm == djf.mode) {                               /* its side: the filter in, the cutoff toward the knob's */
         int32_t e = djf_cut(v) - djf.cut;
-        djf.cut += e / 8 ? e / 8 : e;                   /* (an eighth a block: ~6 ms) */
+        djf.cut += e / (256 / (int32_t)CTL) ? e / (256 / (int32_t)CTL) : e;   /* (an eighth a block of 32: ~6 ms) */
         w1 = w0 + 4096 / DJF_XB > 4096 ? 4096 : w0 + 4096 / DJF_XB;
     } else {                                            /* the middle, or the other side: out first (then in, there) */
         w1 = w0 - 4096 / DJF_XB < 0 ? 0 : w0 - 4096 / DJF_XB;
@@ -404,7 +404,7 @@ static __attribute__((noinline)) void lev_block(uint32_t n)
         }
         g1 = clamp((int32_t)rt << 5, 11500, 65536);     /* Q15: x0.35 .. x2 */
     }
-    g1 = lev_g + ((g1 - lev_g) >> (lev_env > LEV_GATE && pk > LEV_GATE ? 8 : 5));   /* (smoothed: ~190 ms; gated, under -38 dB: ~25 ms
+    g1 = lev_g + ((g1 - lev_g) >> (lev_env > LEV_GATE && pk > LEV_GATE ? 8 : 5) - (CTL_LOG2 - 5));   /* (smoothed: ~190 ms; gated, under -38 dB: ~25 ms
                                                          * back to unity, no gain left on a tail's offset) */
     lev_cur = lev_g;                                    /* (master_out ramps it across the block, after the DC block) */
     lev_dg = (g1 - lev_g) / (int32_t)n;
@@ -855,7 +855,7 @@ static __attribute__((noinline)) void rev_spring(const int32_t *rev_in, int32_t 
     uint32_t ns = sys_load == LOAD_ECO ? SP_N_ECO : SP_N;   /* (0.6.70) LOAD ECO: a shorter chain */
     if (!fx.sp_size)
         fx.sp_size = len;
-    fx.sp_size += clamp(len - fx.sp_size, -256, 256);   /* SIZE glides (a sample a block at most) */
+    fx.sp_size += clamp(len - fx.sp_size, -(8 * (int32_t)CTL), 8 * (int32_t)CTL);   /* SIZE glides (a sample a block of 32 at most) */
     L = fx.sp_size >> 8;
     fx.sp_ph += 2u * LFO_INC[song.g[G_RMOD] ? song.g[G_RRATE] & 127 : 24];   /* the wobble: a slow sine, 1.5 samples */
     w = (fx.sp_size >> 1) + ((osc_sine(fx.sp_ph) * (3 + song.g[G_RMOD] / 2)) >> 8);   /* deep (MOD: up to 66); the far end, Q8 */
@@ -1013,7 +1013,7 @@ static __attribute__((noinline)) void rev_reso(const int32_t *rev_in, int32_t *o
         if (per[k] > (RS_LEN - 2u) << 8) per[k] = (RS_LEN - 2u) << 8;
         if (!fx.rs_per[k])
             fx.rs_per[k] = per[k];
-        fx.rs_per[k] += (uint32_t)(((int32_t)per[k] - (int32_t)fx.rs_per[k]) / 6);   /* (a glide, ~6 blocks) */
+        fx.rs_per[k] += (uint32_t)(((int32_t)per[k] - (int32_t)fx.rs_per[k]) / (192 / (int32_t)CTL));   /* (a glide, ~6 blocks of 32) */
         per[k] = fx.rs_per[k];
     }
     for (i = 0; i < n; i++) {
@@ -1915,7 +1915,7 @@ static inline __attribute__((always_inline)) void mix_part(track_t *t, uint32_t 
     mod_begin(t);                                       /* the matrix's per-block values into t->p (mod.c) */
     int uin = uin_on && (uint32_t)(t - trk) + 1u == trk_live;   /* (0.7.5) USB IN+OUT: the host's audio comes in here */
     if (track_render(t, b, n))
-        t->tail = 16;                                   /* blocks of DIST state to run out after the last voice */
+        t->tail = (uint8_t)(512u / CTL);                /* blocks of DIST state to run out after the last voice */
     else if (!uin && (!t->tail || !t->p[P_DIST] || !--t->tail)) {
         mp_seen[(uint32_t)(t - trk) % NTRK] = 0;       /* (silent: the next sound at its LEVEL and PAN) */
         if (MOD.on)
@@ -1934,8 +1934,8 @@ static inline __attribute__((always_inline)) void mix_part(track_t *t, uint32_t 
         }
         l0 = mp_lvl[ti];
         p0 = mp_pan[ti];
-        mp_lvl[ti] += (lvl - l0) >> 2;
-        mp_pan[ti] += (pan - p0) >> 2;
+        mp_lvl[ti] += (lvl - l0) >> (7 - CTL_LOG2);       /* (a quarter a block of 32: ~3 ms) */
+        mp_pan[ti] += (pan - p0) >> (7 - CTL_LOG2);
         if (mp_lvl[ti] - lvl < 256 && lvl - mp_lvl[ti] < 256) mp_lvl[ti] = lvl;   /* (there: exactly) */
         if (mp_pan[ti] - pan < 64 && pan - mp_pan[ti] < 64) mp_pan[ti] = pan;
         lq = l0;

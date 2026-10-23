@@ -402,10 +402,10 @@ static void animal_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
         inc = an_inc(m->pitch16 + an_reg(p) + an_hook(v, dep) + (jw >> 8) + ((r * r >> 14) * 3 >> 14), m->fine);
         a2 = (r * p[P_E2]) >> 8;                         /* the second harmonic */
         v->ph[1] = (uint32_t)r;
-        k = r - r0;                                      /* (the ramp in Q19: exact over the CTL samples) */
-        r = r0 << 5;
+        k = r - r0;                                      /* (the ramp in Q(14 + CTL_LOG2): exact over the CTL samples) */
+        r = r0 << CTL_LOG2;
         for (i = 0; i < n; i++) {
-            int32_t y = (sine_i(ph) * (r >> 5)) >> 14;
+            int32_t y = (sine_i(ph) * (r >> CTL_LOG2)) >> 14;
             if (a2)
                 y += (sine_i(ph << 1) * a2) >> 15;
             ph += inc;
@@ -425,7 +425,7 @@ static void animal_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
             tg = (r & 0xFFFF0000u) | (55u + ((r >> 4) & 127u));
         }
         tg--;
-        dr += (((((int32_t)tg >> 16) * p[P_E2]) >> 9) - dr) >> 5;   /* (Q8 of 1/16 st: +-2 st at full) */
+        dr += (((((int32_t)tg >> 16) * p[P_E2]) >> 9) - dr) >> (10 - CTL_LOG2);   /* (Q8 of 1/16 st: +-2 st at full; a block's step) */
         if (g) {                                         /* the fly-by: higher coming, lower going (3u^2 - 2u^3) */
             int32_t u = (int32_t)((uint32_t)v->s[2] >> 17), s = (((u * u) >> 15) * (98304 - 2 * u)) >> 15;
             dop = (p[P_E4] * (32768 - 2 * s)) >> 14;

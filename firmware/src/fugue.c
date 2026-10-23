@@ -110,9 +110,11 @@ static __attribute__((noinline)) void fugue_tick(track_t *t, uint32_t n, uint32_
         fg_head_t *h = &fg_head[ti][k];
         uint32_t steplen, guard;
         if (h->n) {
-            if (h->off <= n)
+            if (h->off <= n) {                           /* (ctl64) the gate ends at its sample */
+                ev_at(h->off);
                 fg_release(t, h);
-            else
+                ev_off = 0;
+            } else
                 h->off -= n;
         }
         if (!f->rate || f->rate >= FG_NRATE || !len)
@@ -120,14 +122,19 @@ static __attribute__((noinline)) void fugue_tick(track_t *t, uint32_t n, uint32_
         steplen = (uint32_t)((uint64_t)period * FG_DEN[f->rate] / FG_NUM[f->rate]);
         if (steplen < CTL)
             steplen = CTL;
-        if (h->pos == 0x7FFFFFFFu)                       /* (the start: its first step now) */
-            h->pos = steplen;
-        else
-            h->pos += n;
-        for (guard = 0; h->pos >= steplen && guard < 4u; guard++) {
-            h->pos -= steplen;
+        if (h->pos == 0x7FFFFFFFu) {                     /* (the start: its first step now) */
+            h->pos = 0;
             h->idx = (uint16_t)fg_next(h, f->dir, len);
             fg_play(t, h, f, h->idx, steplen);
+            continue;
+        }
+        h->pos += n;
+        for (guard = 0; h->pos >= steplen && guard < 4u; guard++) {
+            h->pos -= steplen;
+            ev_at(h->pos >= n ? 0u : n - h->pos);        /* (ctl64) each step at its sample */
+            h->idx = (uint16_t)fg_next(h, f->dir, len);
+            fg_play(t, h, f, h->idx, steplen);
+            ev_off = 0;
         }
     }
 }

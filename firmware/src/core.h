@@ -12,7 +12,9 @@
 #define NPART 6                  /* synth parts: tracks 1..6 (JIANT 0.6: was 4) */
 #define NTRK NPART               /* tracks (the formats and the protocol count these): every track is a part */
 #define NSTEP 64
-#define HALF_FRAMES 128          /* I2S half buffer: 2.9 ms at 44.1 kHz (a key waits 0..1 half, then plays 1 half later) */
+#define HALF_FRAMES 128          /* I2S half buffer: 2.9 ms at 44.1 kHz (a key waits 0..1 half, then plays 1 half later).
+                                  * Rendered in blocks of CTL samples (felucca_tables.h, tools/gen_tables.py: 64 since 0.9.9
+                                  * ctl64, 32 before): the control rate of envelopes, LFOs, the sequencer */
 #ifndef FELUCCA_FM4
 #define FELUCCA_FM4 0            /* the DIGITAL engine (eng_digital.c, four-operator FM): kept in the tree, not built
                                   * by default; replaced by FM6, its sounds convert (fm4_convert.c) */
@@ -45,6 +47,16 @@ static MC_HOST_STORAGE uint8_t mc_host_cpu; /* the concurrent host test uses thr
 #ifndef FELUCCA_HOTRAM
 #define FELUCCA_HOTRAM 1
 #endif
+/* (0.9.9 ctl64) the sample within the block (0 .. CTL - 1) the event being handled falls on: seq.c sets it around the
+ * note-ons and -offs it fires inside a block (a step's start, a strum's note, HUMAN TIME, a ratchet's part, an ARP step, a
+ * gate's end), voice.c keeps it with the voice (voice_t.sub) and renders the note from that sample. 0 between events */
+static uint8_t ev_off;
+/* (ctl64) the sample a voice's render starts at within the part's block (voice.c track_render), this core's: an engine
+ * that writes other buffers than out by index (eng_drum.c: the sides, the sends) offsets them by it */
+static uint8_t vo_off_c[2];
+/* (ctl64) a VOICE note's random draw (eng_formant.c formant_note_on), made when the note is asked for (voice.c
+ * voice_begin, on core 0), not when its voice starts in the render (either core) */
+static uint32_t vs_rnd;
 #define UP_SLOTS 32u             /* user presets (upreset.c) */
 #define NELEM(a) (sizeof(a) / sizeof((a)[0]))
 
@@ -314,7 +326,23 @@ typedef struct {
     int16_t mrnd;
     int16_t gfrom;               /* (0.9.8) where the glide set out from (1/16 st; VOICE sings it as an S-curve: voice.c
                                   * glide_sung; in the struct's padding, its size as before) */
+    /* (0.9.9 ctl64) a start or a release inside the block, kept for its sample (voice.c voice_begin / voice_off_at;
+     * track_render renders the note sounding up to it, then starts or releases the voice there): sub = the sample + 1
+     * (0: none; CTL + 1: the next block's first), pn_*: the start as asked (voice_start's arguments and what it reads
+     * of the track at the time) */
+    uint8_t sub, pn_flags, pn_note, pn_vel;
+    uint8_t pn_mvel, pn_glide, pn_tch, pn_pad;
+    int8_t pn_henv, pn_dpit;
+    int16_t pn_mrnd, pn_dbend;
+    uint16_t pn_dbt, pn_fin;
+    int16_t pn_bend;             /* PN_BEND: the step's BEND (1/16 st) the started voice glides by (seq.c seq_step) */
+    int32_t pn_fine, pn_pcur, pn_gstep;   /* PN_GLIDE: where the glide sets out from, its step (seq.c chord_glide) */
+    uint32_t pn_phr, pn_age;
 } voice_t;
+#define PN_START 1u              /* pn_flags: a start (else a release) */
+#define PN_OLD 2u                /* .. of a voice sounding: its note rendered up to the sample */
+#define PN_BEND 4u               /* .. then its BEND set (pn_bend, pn_gstep) */
+#define PN_GLIDE 8u              /* .. then its glide in (pn_pcur, pn_gstep, pn_fin) */
 
 typedef struct {                 /* per-voice control-rate modulation, computed in voice.c */
     uint32_t inc;                /* phase increment of the base pitch */
@@ -374,6 +402,10 @@ typedef struct {                 /* an engine (engines.c ENGINES[]; the eng_*.c 
      * done() says so (once per control tick, before the render), not at the end of the ADSR's release */
     uint8_t ownenv;
     int (*done)(struct track *t, voice_t *v);
+    /* (0.9.9 ctl64) 1 = renders whole blocks only (FM6: its operators' block): a note inside a block starts at the
+     * nearer block edge (within CTL / 2), as every engine did with blocks of 32; 0 = a note starts at its sample
+     * (voice.c track_render renders the voice from there) */
+    uint8_t whole;
 } engine_t;
 
 /* ------------------------------------------------- tracks, the song --- */

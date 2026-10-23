@@ -120,7 +120,7 @@ static uint8_t tf_on[NTRK], tf_ft[NTRK];        /* the SVF in the chain the last
 static uint8_t tf_cmb[NTRK];                    /* (0.6.81) the COMB ran the last block (its line live) */
 static uint8_t tf_xb[NTRK], tf_fo[NTRK];        /* (0.6.81) a TYPE's crossfade: its blocks left, the TYPE from (TF_DRY:
                                                  * no filter) */
-#define TF_XB 8u                                /* (~5 ms: one block's fade between two filters was a tick) */
+#define TF_XB (256u / CTL)                      /* (~5 ms: one block's fade between two filters was a tick) */
 #define TF_DRY 0xFFu
 /* the filter of TYPE ft on a part's block; fo (not TF_DRY, an SVF TYPE): from fo's output to ft's, w0 + (i + 1) dw
  * (Q12) of the way (the SVF's three outputs from one state); own: the engine filters its notes itself (ANALOG, LOFI):
@@ -541,7 +541,8 @@ static void glide_set(track_t *t, voice_t *v, int glide)
         return;
     }
     if (t->p[P_GLMODE] || glide == 2) {
-        int32_t d = v->pitch16 - v->pitch_cur, ticks = glide == 2 ? 80 : 1 + t->p[P_GLIDE] * t->p[P_GLIDE] / 8;
+        int32_t d = v->pitch16 - v->pitch_cur, ticks = (glide == 2 ? 80 : 1 + t->p[P_GLIDE] * t->p[P_GLIDE] / 8) * 32 / (int32_t)CTL;   /* (ticks of 32 samples, as set) */
+        if (ticks < 1) ticks = 1;
         d = d < 0 ? -d : d;
         v->gstep = d * 256 / ticks > 0 ? d * 256 / ticks : 1;
     } else {
@@ -556,7 +557,7 @@ static int32_t trk_trans(const track_t *t)
     const engine_t *e = ENGINES[t->engine % NENGINES];
     return e->oneshot || e->keys ? 0 : t->p[P_TRANS];
 }
-static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int glide)
+static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int glide, uint32_t age)
 {
     const engine_t *e = ENGINES[t->engine];
     int sounding = v->active && v->stage != 0;
@@ -568,7 +569,7 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
     v->gate = 1;
     v->active = 1;
     v->stage = 1;
-    v->age = ++vage;
+    v->age = age;
     if (e == &ENG_FORMANT)
         glide_from(v);
     v->fin_d = 0;
@@ -605,6 +606,110 @@ static void voice_start(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int
     }
 }
 
+/* (0.9.9 ctl64) a note asked for at ev_off, the sample within the block (seq.c): at the block's first sample (or an
+ * engine of whole blocks, FM6, within half a block of it) the voice starts now, as ever (what it sounded is cut at the
+ * block's start). Else the start is kept with the voice (voice_t.sub, pn_*) and track_render makes it at its sample:
+ * the note sounding until then rendered up to it, the new one from it (voice_start_rec). fine: UNISON's detune; phr:
+ * a random phase added to the voice's first oscillator (UNISON). The voice counts as taken from here (active, gate,
+ * the new note's age), so a second note of the block gets another slot */
+static void voice_begin(track_t *t, voice_t *v, uint32_t note, uint32_t vel, int glide, int32_t fine, uint32_t phr)
+{
+    const engine_t *e = ENGINES[t->engine];
+    uint32_t k = ev_off, age = ++vage;
+    vs_rnd = e == &ENG_FORMANT ? noise32(&formant_nz) : 0u;   /* (its RAND vowel: drawn here, on core 0) */
+    if (e->whole)
+        k = k >= CTL / 2u ? CTL : 0u;                   /* the nearer block edge (CTL: the next block's) */
+    if (!k) {
+        v->fine = fine;
+        v->sub = 0;
+        voice_start(t, v, note, vel, glide, age);
+        v->ph[0] += phr;
+        return;
+    }
+    v->pn_flags = (uint8_t)(PN_START | (v->active && v->stage != 0 && v->stage != 4u ? PN_OLD : 0u));
+    v->pn_note = (uint8_t)note;
+    v->pn_vel = (uint8_t)vel;
+    v->pn_glide = (uint8_t)glide;
+    v->pn_fine = fine;
+    v->pn_phr = phr;
+    v->pn_age = age;
+    v->pn_henv = t->hum_env;                            /* what voice_start and the engine's note_on read of the track */
+    v->pn_mvel = t->m_vel;                              /* now, as they would have (seq.c sets them around the note) */
+    v->pn_mrnd = t->m_rnd;
+    v->pn_dpit = t->dpit;
+    v->pn_dbend = t->dbend;
+    v->pn_dbt = t->dbt;
+    v->pn_tch = (uint8_t)(dx_in_tch ? dx_in_tch : t->dtch);
+    if (e == &ENG_DRUM && drum_lane(note) == DV_KICK)
+        duck_hit = 1;                                   /* (DUCK: the kick's, as drum_note_on tells it; this block's) */
+    if (!(v->pn_flags & PN_OLD)) {                      /* a free slot: nothing of it sounds before the start */
+        v->stage = 0;
+        v->env = v->env_out = 0;
+    }
+    v->active = 1;
+    v->gate = 1;
+    v->note = (uint8_t)note;
+    v->vel = (uint8_t)vel;                              /* (what reads the voice sees the new note from here) */
+    v->age = age;
+    v->sub = (uint8_t)(k + 1u);
+}
+/* the kept start, made (track_render, at the voice's sample; on either core): the track's values of the time put in
+ * for voice_start and the engine's note_on, then back */
+static __attribute__((noinline)) void voice_start_rec(track_t *t, voice_t *v)
+{
+    int8_t he = t->hum_env, dp = t->dpit;
+    uint8_t mv = t->m_vel, tch = t->dtch;
+    int16_t mr = t->m_rnd, db = t->dbend;
+    uint16_t dbt = t->dbt;
+    uint32_t off = !v->gate || v->stage == 3u;          /* let go (or ended) since it was asked for: on, then off */
+    t->hum_env = v->pn_henv; t->m_vel = v->pn_mvel; t->m_rnd = v->pn_mrnd;
+    t->dpit = v->pn_dpit; t->dbend = v->pn_dbend; t->dbt = v->pn_dbt; t->dtch = v->pn_tch;
+    v->fine = v->pn_fine;
+    voice_start(t, v, v->pn_note, v->pn_vel, v->pn_glide, v->pn_age);
+    v->ph[0] += v->pn_phr;
+    t->hum_env = he; t->m_vel = mv; t->m_rnd = mr;
+    t->dpit = dp; t->dbend = db; t->dbt = dbt; t->dtch = tch;
+    if (v->pn_flags & PN_BEND) {                        /* (seq.c seq_step: BEND, set after the note-on) */
+        v->pitch_cur = v->pitch16;
+        v->pitch16 = clamp(v->pitch16 + v->pn_bend, 0, 2047);
+        v->gstep = v->pn_gstep;
+    }
+    if (v->pn_flags & PN_GLIDE) {                       /* (seq.c chord_glide: a new note of the chord, in as it glides) */
+        v->pitch_cur = v->pn_pcur;
+        v->gfrom = (int16_t)v->pn_pcur;
+        v->gstep = v->pn_gstep;
+        v->gacc = 0;
+        v->fin_d = v->pn_fin;
+    }
+    if (off) {
+        v->gate = 0;
+        v->stage = 3;
+    }
+}
+/* (ctl64) a sounding voice let go at ev_off: at the block's first sample now (as ever); else kept (sub, no PN_START):
+ * track_render renders it held up to its sample and releases it there (an engine of whole blocks: at the nearer block
+ * edge). A voice whose start is still kept is let go after its start (voice_start_rec: off). Hits (DRUM) end by
+ * themselves: let go now */
+static void voice_off_at(track_t *t, voice_t *v)
+{
+    const engine_t *e = ENGINES[t->engine];
+    uint32_t k = ev_off;
+    if (e->whole)
+        k = k >= CTL / 2u ? CTL : 0u;
+    if (v->sub && (v->pn_flags & PN_START)) {           /* starting in this block: off right after (zero-length) */
+        v->gate = 0;
+        return;
+    }
+    if (!k || e->oneshot || !v->active || v->stage == 4u) {
+        v->gate = 0;
+        v->stage = 3;
+        v->sub = 0;
+        return;
+    }
+    v->pn_flags = PN_OLD;
+    v->sub = (uint8_t)(k + 1u);
+}
+
 /* MONO / LEGATO / UNISON: one note on one voice (eight for UNISON, or the
  * engine's voice cap, spread by DETUNE over the same width) */
 static void mono_play(track_t *t, uint32_t note, uint32_t vel, int retrig, int glide)
@@ -615,18 +720,26 @@ static void mono_play(track_t *t, uint32_t note, uint32_t vel, int retrig, int g
         int32_t k = 2 * (int32_t)i - (int32_t)(nv - 1u);   /* -7 .. 7 */
         if (nv > 1u && nv < NVOICE)
             k = k * (NVOICE - 1) / (int32_t)(nv - 1u);      /* fewer voices: the outer ones as wide */
-        v->fine = nv > 1u ? k * t->p[P_DETUNE] * 56 / 889 : 0;   /* up to ~±40 cents */
+        int32_t fine = nv > 1u ? k * t->p[P_DETUNE] * 56 / 889 : 0;   /* up to ~±40 cents */
         if (retrig || !v->active || !v->gate) {
+            uint32_t phr = 0;
             if ((!v->active || v->stage == 4u) && !voice_room(t, i > 0))
                 continue;                                   /* no room for this extra UNISON voice */
-            /* level: about the same sum for 8 or 4 voices at random phases */
-            voice_start(t, v, note, nv >= NVOICE ? vel * 36u / 100u : nv > 1u ? vel / 2u : vel, glide);
             if (nv > 1u && i && !ENGINES[t->engine]->sampled) {   /* random start phases: */
                 static uint32_t seed = 0x1234567u;          /* in phase they stack, evenly spread they cancel */
                 seed = seed * 1664525u + 1013904223u;
-                v->ph[0] += seed;
+                phr = seed;
             }
+            /* level: about the same sum for 8 or 4 voices at random phases */
+            voice_begin(t, v, note, nv >= NVOICE ? vel * 36u / 100u : nv > 1u ? vel / 2u : vel, glide, fine, phr);
+        } else if (v->sub && (v->pn_flags & PN_START)) {    /* (ctl64) starting later in this block: that start's note */
+            v->pn_note = (uint8_t)note;
+            v->note = (uint8_t)note;
+            v->pn_fine = fine;
+            if (vel > v->pn_vel && nv == 1u)
+                v->pn_vel = (uint8_t)vel;
         } else {                                            /* legato: new pitch, same envelope */
+            v->fine = fine;
             v->note = (uint8_t)note;
             glide_from_trk(t, v);
             v->pitch16 = ((int32_t)note + trk_trans(t)) * 16 + t->pfx_rpit;
@@ -708,8 +821,7 @@ static void trk_note_on(track_t *t, uint32_t note, uint32_t vel)
         voice_t *v = voice_alloc(t, note);
         t->nmono = 0;                                   /* no stale mono stack after a mode change */
         t->mono_note = 0;
-        v->fine = 0;
-        voice_start(t, v, note, vel, t->p[P_GLIDE] != 0 && !ENGINES[t->engine]->oneshot);
+        voice_begin(t, v, note, vel, t->p[P_GLIDE] != 0 && !ENGINES[t->engine]->oneshot, 0, 0u);
         return;
     }
     {
@@ -746,19 +858,15 @@ static void trk_note_off(track_t *t, uint32_t note)
                 mono_play(t, next, t->v[0].vel, 0, t->p[P_GLIDE] != 0);
             } else {
                 for (i = 0; i < nv; i++)
-                    if (t->v[i].gate) {
-                        t->v[i].gate = 0;
-                        t->v[i].stage = 3;
-                    }
+                    if (t->v[i].gate)
+                        voice_off_at(t, &t->v[i]);
                 t->mono_note = 0;
             }
         }
     }
     for (i = 0; i < NVOICE; i++)                        /* a fallback above already has its new pitch */
-        if (t->v[i].note == note && t->v[i].gate) {
-            t->v[i].gate = 0;
-            t->v[i].stage = 3;
-        }
+        if (t->v[i].note == note && t->v[i].gate)
+            voice_off_at(t, &t->v[i]);
 }
 
 static void trk_all_off(track_t *t)
@@ -767,6 +875,7 @@ static void trk_all_off(track_t *t)
     for (i = 0; i < NVOICE; i++) {
         t->v[i].gate = 0;
         t->v[i].stage = t->v[i].active ? 3 : 0;
+        t->v[i].sub = 0;                                /* (ctl64) a start kept for its sample: dropped */
     }
     t->nmono = 0;
     t->mono_note = 0;
@@ -779,13 +888,13 @@ static void trk_all_off(track_t *t)
  * parameters (pe_old: an engine never reads another engine's values, which index its tables); only
  * then the engine switches and the notes that came during the fade start on it. A part with nothing
  * sounding switches at once. */
-#define XF_BLOCKS 4u                                    /* 4 x 32 samples: 2.9 ms */
+#define XF_BLOCKS (128u / CTL)                          /* 128 samples: 2.9 ms */
 /* (0.6.41) smoother: an engine switch fades out over XF_ENG (11.6 ms) and what was held (keys, the sequencer's notes:
  * xf_held, before the load's release) starts on the new engine, fading in over XF_ENG; an engine's list value
  * (WAVE, CHIP, TYPE .. F_ENUM) changed while it sounds: a dip, XF_DIP out on the old value and in on the new one, the
  * voices going on (it clicked: the wave swapped mid-cycle); (0.6.81) a value with names too (FM6's ALG, its SLOT) */
-#define XF_ENG 16u
-#define XF_DIP 4u                                       /* (0.6.81: 2.7 ms each way, was 1.3: a tick) */
+#define XF_ENG (512u / CTL)                             /* 11.6 ms */
+#define XF_DIP (128u / CTL)                             /* (0.6.81: 2.7 ms each way, was 1.3: a tick) */
 static int eng_kit(uint32_t e) { return ENGINES[e % NENGINES]->oneshot; }
 static uint32_t xf_held(const track_t *t, uint8_t *nt, uint8_t *vl)   /* the notes held (up to 4): their count */
 {
@@ -890,7 +999,8 @@ static void trk_fade_out(track_t *t)
     }
 }
 
-/* one control tick (CTL samples) of the amplitude envelope; returns Q15 */
+/* one control tick (CTL samples) of the amplitude envelope; returns Q15 (the tables ENV_LIN / ENV_EXP are per CTL:
+ * tools/gen_tables.py) */
 static int32_t env_tick(track_t *t, voice_t *v)
 {
     const int16_t *p = t->p;
@@ -918,16 +1028,22 @@ static int32_t env_tick(track_t *t, voice_t *v)
         }
         break;
     case 4:                                             /* given up (another part, the load): it fades out. (JIANT
-                                                         * 0.6.74) A half cosine over 6 blocks (~4.4 ms), each block's
-                                                         * ramp between (KFADE: each block's gain over the last's):
-                                                         * gentle in and out. One block (0.7 ms, full to 0, as before)
-                                                         * clicked on every steal, a bass note most; longer would keep
-                                                         * more voices rendering under load */
+                                                         * 0.6.74) A half cosine over ~4.4 ms (6 blocks of 32; ctl64:
+                                                         * 3 of 64), each block's ramp between (KFADE: each block's gain
+                                                         * over the last's): gentle in and out. One block (full to 0,
+                                                         * as before) clicked on every steal, a bass note most; longer
+                                                         * would keep more voices rendering under load */
     {
+#if CTL == 32
         static const uint8_t KFADE[6] = {239, 206, 171, 128, 69, 0};
-        v->env = (int32_t)(((int64_t)v->env * KFADE[v->kfade < 6u ? v->kfade : 5u]) >> 8);
+#define KFADE_N 6u
+#else
+        static const uint8_t KFADE[3] = {222, 148, 0};
+#define KFADE_N 3u
+#endif
+        v->env = (int32_t)(((int64_t)v->env * KFADE[v->kfade < KFADE_N ? v->kfade : KFADE_N - 1u]) >> 8);
         v->kfade++;
-        if (v->kfade >= 6u || !v->env) {
+        if (v->kfade >= KFADE_N || !v->env) {
             v->env = 0;
             v->stage = 0;
             v->active = 0;
@@ -943,6 +1059,96 @@ static int32_t env_tick(track_t *t, voice_t *v)
 
 /* (JIANT 0.7.8) DRIFT: each voice its own slow value noise (mod.c drift_noise), on the track's blocks */
 static uint32_t drift_clk[NTRK];
+
+/* the per-block values a part's voices share (track_render) */
+typedef struct {
+    int32_t lfo, tune, tune_fine, bend16, bend_fine, damt;
+    uint32_t ti, fade;
+} vctx_t;
+/* one voice's block: its control tick (the envelope, the glide, the modulation) and its render into out[off .. off + n)
+ * (the part's buffer from its sample; (ctl64) n < CTL: a note starting or ending inside the block, track_render: the
+ * amplitude ramp then goes on at its slope, the level reached kept for the next block). Returns 1 when it rendered */
+static uint32_t voice_block(track_t *t, const engine_t *e, voice_t *v, int32_t *out, uint32_t off, uint32_t n,
+                            const vctx_t *c)
+{
+    const int16_t *p = t->p;
+    vmod_t m;
+    int32_t env, pitch, dfine, dcut, fsum;
+    {
+        env = env_tick(t, v);
+        if (e->ownenv && v->active) {               /* the engine's envelopes (FM6): they end the voice */
+            if (e->done(t, v)) {
+                v->active = v->gate = 0;
+                v->stage = 0;
+                v->env = v->env_out = 0;
+                return 0;
+            }
+            if (v->stage != 4u) {                   /* (0.6.74: given up, env_tick's fade) */
+                v->env = 1 << 24;                   /* (the ADSR's release never ends it) */
+                env = 32767;
+            }
+        }
+        if (e->amp)                                 /* the engine's own amplitude curve */
+            env = e->amp(t, v, env);
+        m.envq15 = e->ownenv ? 0 : env;
+        m.amp1 = e->ownenv ? env : mulq15(env, v->vel * 258);
+        if (p[P_LD_AMP])
+            m.amp1 = mulq15(m.amp1, 32767 - mulq15((c->lfo + 32768) >> 1, p[P_LD_AMP] * 258));
+        if (c->fade)                                /* linear to 0 over the fade */
+            m.amp1 = m.amp1 * (int32_t)(t->xf - 1u) / (int32_t)(t->xf_len ? t->xf_len : XF_BLOCKS);
+        else if (t->xin)                            /* (0.6.41) in, linear, after a switch or a dip */
+            m.amp1 = m.amp1 * (int32_t)(t->xin_len - t->xin + 1u) / (int32_t)(t->xin_len + 1u);
+        if (v->fin_d) {                             /* (0.6.81) a chord glide's new note, in as it glides */
+            int32_t r = v->pitch16 - v->pitch_cur;
+            r = r < 0 ? -r : r;
+            if (r >= (int32_t)v->fin_d) r = v->fin_d - 1;
+            m.amp1 = m.amp1 * ((int32_t)v->fin_d - r) / (int32_t)v->fin_d;
+            if (!r) v->fin_d = 0;
+        }
+        m.amp0 = v->env_out;
+        v->env_out = m.amp1;
+    }
+    if (v->pitch_cur != v->pitch16) {               /* glide */
+        int32_t d = v->pitch16 - v->pitch_cur;
+        int32_t st;
+        if (v->gstep) {                             /* TIME: Q8, the fraction carried (0.6.82) */
+            int32_t q = v->gacc + v->gstep;
+            st = q >> 8;
+            v->gacc = (uint8_t)(q & 255);
+        } else {
+            st = (int32_t)(ENV_LIN[(p[P_GLIDE] ? p[P_GLIDE] : 40) & 127] >> 14);   /* slide: ~45 ms */
+            if (st < 1)
+                st = 1;
+        }
+        v->pitch_cur += d > 0 ? (d < st ? d : st) : (-d < st ? d : -st);
+    }
+    if (!env && !m.amp0 && v->stage == 2 && !e->sampled)
+        return 0;                                   /* held at a silent sustain (SUS 0): nothing to render */
+    pitch = v->pitch_cur + t->pfx_pit + c->tune + c->bend16 + ((c->lfo * p[P_LD_PIT] * 3) >> 15) + ((m.envq15 * p[P_ED_PIT] * 3) >> 15);
+    m.pitch16 = clamp(pitch, 0, 2047);
+    m.inc = pitch_inc(m.pitch16);
+    dfine = dcut = 0;
+    if (c->damt) {                                     /* (0.7.8) DRIFT: up to ~27 ct, and the filter a little */
+        dfine = (drift_noise(c->ti * 8u + (uint32_t)(v - t->v) * 1013u, drift_clk[c->ti] + (uint32_t)(v - t->v) * 397u, 10u - (CTL_LOG2 - 5u)) * c->damt) >> 16;   /* (~0.74 s) */
+        dcut = (drift_noise(c->ti * 8u + (uint32_t)(v - t->v) * 1013u + 0x5bd1u, drift_clk[c->ti] + (uint32_t)(v - t->v) * 211u, 11u - (CTL_LOG2 - 5u)) * c->damt) >> 12;   /* (~1.5 s) */
+    }
+    fsum = v->fine + c->tune_fine + c->bend_fine + dfine;
+    m.fine = fsum;
+    if (fsum)                                       /* residual below 1/16 semitone */
+        m.inc += (uint32_t)((int32_t)(m.inc >> 12) * fsum);
+    m.cutoff = ((c->lfo * p[P_LD_FLT]) >> 7) + ((m.envq15 * p[P_ED_FLT]) >> 7) + dcut;
+    if (v->vel > 110)                               /* accent opens the filter with the env */
+        m.cutoff += (m.envq15 * 24) >> 7;
+    m.shape = (64 << 8) + ((c->lfo * p[P_LD_SHP]) >> 7) + ((m.envq15 * p[P_ED_SHP]) >> 7);
+    if (MOD.on)                                     /* the modulation matrix (mod.c) */
+        mod_voice(t, v, &m, fsum);
+    vo_off_c[MC_CPU() & 1u] = (uint8_t)off;
+    e->render(t, v, out + off, n, &m);
+    vo_off_c[MC_CPU() & 1u] = 0;
+    if (n < CTL)                                        /* (ctl64) part of a block: the ramp's level where it got to */
+        v->env_out = m.amp0 + (((m.amp1 - m.amp0) * (int32_t)n) >> CTL_LOG2);
+    return 1;
+}
 
 /* render one block of a part into out (cleared here); returns the voices rendered */
 /* Channel bend is live performance state, outside projects/presets. Q8 semitones. */
@@ -962,8 +1168,8 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         midi_bend_q8[ti] = midi_bend_target[ti] = 0;
     } else {
         int32_t d = midi_bend_target[ti] - midi_bend_q8[ti];
-        /* ~6 ms smoothing, with an exact landing (no permanent small offset). */
-        midi_bend_q8[ti] += d > 0 ? (d < 4 ? d : (d + 3) / 4) : (d > -4 ? d : (d - 3) / 4);
+        /* ~6 ms smoothing, with an exact landing (no permanent small offset); (ctl64: a quarter a block of 32, a half of 64) */
+        midi_bend_q8[ti] += d > 0 ? (d < 4 ? d : (d + 3) / (128 / (int32_t)CTL)) : (d > -4 ? d : (d - 3) / (128 / (int32_t)CTL));
     }
     bend = midi_bend_q8[ti];
     bend16 = bend >= 0 ? bend / 16 : -((-bend + 15) / 16);
@@ -983,9 +1189,9 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
         }
     track_lfo_tick(t);
     {   /* (0.6.50) MORPH slewed (at most 3 of the knob's steps a block) and ramped by the engines across the block */
-        int32_t g = clamp(p[P_MORPH], 0, 127) << 8, c = t->mo_cur;
+        int32_t g = clamp(p[P_MORPH], 0, 127) << 8, c = t->mo_cur, ms = (3 * (int32_t)CTL / 32) << 8;   /* (3 a block of 32) */
         t->mo_prev = (uint16_t)c;
-        t->mo_cur = (uint16_t)(c + clamp(g - c, -(3 << 8), 3 << 8));
+        t->mo_cur = (uint16_t)(c + clamp(g - c, -ms, ms));
     }
     dx_xon = 0;                                         /* (0.6.48) a DRUM part's IMAGE and SENDs (eng_drum.c) */
     if (e == &ENG_DRUM)
@@ -995,82 +1201,48 @@ static uint32_t track_render(track_t *t, int32_t *out, uint32_t n)
     damt = e == &ENG_DRUM ? 0 : 127 - clamp(p[P_DRIFT], 0, 127);   /* (0.7.8) DRIFT, 127 stored = 0 % */
     if (damt)
         drift_clk[ti]++;
-    for (i = 0; i < NVOICE; i++) {
-        voice_t *v = &t->v[i];
-        vmod_t m;
-        int32_t env, pitch, dfine, dcut, fsum;
-        if (!v->active)
-            continue;
-        {
-            env = env_tick(t, v);
-            if (e->ownenv && v->active) {               /* the engine's envelopes (FM6): they end the voice */
-                if (e->done(t, v)) {
-                    v->active = v->gate = 0;
-                    v->stage = 0;
-                    v->env = v->env_out = 0;
-                    continue;
-                }
-                if (v->stage != 4u) {                   /* (0.6.74: given up, env_tick's fade) */
-                    v->env = 1 << 24;                   /* (the ADSR's release never ends it) */
-                    env = 32767;
-                }
+    {
+        vctx_t c;
+        c.lfo = lfo; c.tune = tune; c.tune_fine = tune_fine; c.bend16 = bend16; c.bend_fine = bend_fine;
+        c.damt = damt; c.ti = ti; c.fade = fade;
+        for (i = 0; i < NVOICE; i++) {
+            voice_t *v = &t->v[i];
+            uint32_t k = v->sub;
+            if (!v->active)
+                continue;
+            if (!k) {
+                nr += voice_block(t, e, v, out, 0, n, &c);
+                continue;
             }
-            if (e->amp)                                 /* the engine's own amplitude curve */
-                env = e->amp(t, v, env);
-            m.envq15 = e->ownenv ? 0 : env;
-            m.amp1 = e->ownenv ? env : mulq15(env, v->vel * 258);
-            if (p[P_LD_AMP])
-                m.amp1 = mulq15(m.amp1, 32767 - mulq15((lfo + 32768) >> 1, p[P_LD_AMP] * 258));
-            if (fade)                                   /* linear to 0 over the fade */
-                m.amp1 = m.amp1 * (int32_t)(t->xf - 1u) / (int32_t)(t->xf_len ? t->xf_len : XF_BLOCKS);
-            else if (t->xin)                            /* (0.6.41) in, linear, after a switch or a dip */
-                m.amp1 = m.amp1 * (int32_t)(t->xin_len - t->xin + 1u) / (int32_t)(t->xin_len + 1u);
-            if (v->fin_d) {                             /* (0.6.81) a chord glide's new note, in as it glides */
-                int32_t r = v->pitch16 - v->pitch_cur;
-                r = r < 0 ? -r : r;
-                if (r >= (int32_t)v->fin_d) r = v->fin_d - 1;
-                m.amp1 = m.amp1 * ((int32_t)v->fin_d - r) / (int32_t)v->fin_d;
-                if (!r) v->fin_d = 0;
+            /* (ctl64) a start or a release kept for its sample k (voice_begin, voice_off_at) */
+            k--;
+            v->sub = 0;
+            if (v->stage == 4u) {                       /* given up meanwhile: its fade, nothing starts */
+                nr += voice_block(t, e, v, out, 0, n, &c);
+                continue;
             }
-            m.amp0 = v->env_out;
-            v->env_out = m.amp1;
-        }
-        if (v->pitch_cur != v->pitch16) {               /* glide */
-            int32_t d = v->pitch16 - v->pitch_cur;
-            int32_t st;
-            if (v->gstep) {                             /* TIME: Q8, the fraction carried (0.6.82) */
-                int32_t q = v->gacc + v->gstep;
-                st = q >> 8;
-                v->gacc = (uint8_t)(q & 255);
-            } else {
-                st = (int32_t)(ENV_LIN[(p[P_GLIDE] ? p[P_GLIDE] : 40) & 127] >> 14);   /* slide: ~45 ms */
-                if (st < 1)
-                    st = 1;
+            if (k >= n) {                               /* the next block's first sample (an engine of whole blocks) */
+                v->sub = 1;
+                if (v->pn_flags & PN_OLD)
+                    nr += voice_block(t, e, v, out, 0, n, &c);
+                continue;
             }
-            v->pitch_cur += d > 0 ? (d < st ? d : st) : (-d < st ? d : -st);
+            if (!(v->pn_flags & PN_START)) {            /* let go at k: held up to it, released from it */
+                if (k)
+                    voice_block(t, e, v, out, 0, k, &c);
+                v->gate = 0;
+                v->stage = 3;
+                if (v->active)
+                    voice_block(t, e, v, out, k, n - k, &c);
+                nr++;
+                continue;
+            }
+            if ((v->pn_flags & PN_OLD) && k)            /* the note sounding, up to the new one's sample */
+                voice_block(t, e, v, out, 0, k, &c);
+            voice_start_rec(t, v);                      /* then the new one, from it */
+            voice_block(t, e, v, out, k, n - k, &c);
+            nr++;
         }
-        if (!env && !m.amp0 && v->stage == 2 && !e->sampled)
-            continue;                                   /* held at a silent sustain (SUS 0): nothing to render */
-        pitch = v->pitch_cur + t->pfx_pit + tune + bend16 + ((lfo * p[P_LD_PIT] * 3) >> 15) + ((m.envq15 * p[P_ED_PIT] * 3) >> 15);
-        m.pitch16 = clamp(pitch, 0, 2047);
-        m.inc = pitch_inc(m.pitch16);
-        dfine = dcut = 0;
-        if (damt) {                                     /* (0.7.8) DRIFT: up to ~27 ct, and the filter a little */
-            dfine = (drift_noise(ti * 8u + i * 1013u, drift_clk[ti] + i * 397u, 10u) * damt) >> 16;   /* (~0.74 s) */
-            dcut = (drift_noise(ti * 8u + i * 1013u + 0x5bd1u, drift_clk[ti] + i * 211u, 11u) * damt) >> 12;   /* (~1.5 s) */
-        }
-        fsum = v->fine + tune_fine + bend_fine + dfine;
-        m.fine = fsum;
-        if (fsum)                                       /* residual below 1/16 semitone */
-            m.inc += (uint32_t)((int32_t)(m.inc >> 12) * fsum);
-        m.cutoff = ((lfo * p[P_LD_FLT]) >> 7) + ((m.envq15 * p[P_ED_FLT]) >> 7) + dcut;
-        if (v->vel > 110)                               /* accent opens the filter with the env */
-            m.cutoff += (m.envq15 * 24) >> 7;
-        m.shape = (64 << 8) + ((lfo * p[P_LD_SHP]) >> 7) + ((m.envq15 * p[P_ED_SHP]) >> 7);
-        if (MOD.on)                                     /* the modulation matrix (mod.c) */
-            mod_voice(t, v, &m, fsum);
-        e->render(t, v, out, n, &m);
-        nr++;
     }
     if (nr && e == &ENG_DRUM)                           /* (0.6.16) DRUM-X: DRV and the knee on the kit's sum */
         drum_bus(t, out, n);

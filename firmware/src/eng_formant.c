@@ -128,7 +128,8 @@ static void formant_note_on(track_t *t, voice_t *v)
         }
         return;
     }
-    v->s[7] = (int32_t)((noise32(&formant_nz) >> 25) << 25);   /* TALK starts over; a random vowel (RAND) */
+    v->s[7] = (int32_t)((vs_rnd >> 25) << 25);          /* TALK starts over; a random vowel (RAND; ctl64: drawn of
+                                                         * formant_nz when the note was asked for, voice.c voice_begin) */
     if (!v->env && !v->env_out) {                       /* a fresh voice (not a retrigger): from rest */
         uint32_t i;
         v->ph[0] = 0;                                   /* the opening starts at zero: no click */

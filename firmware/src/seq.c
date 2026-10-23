@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: GPL-3.0-only
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments */
 /* Keyboard, scale, arpeggiator, sequencer and transport.
- * Everything here runs in the audio ISR, once per CTL-sample block, and
+ * Everything here runs in the audio ISR, once per CTL-sample block (64 samples since 0.9.9 ctl64; the note-ons it
+ * fires carry the sample within the block they fall on: ev_off, voice.c), and
  * ends in trk_note_on / trk_note_off: engines never see where a note came from.
  * Four tracks, one transport: every track's pattern loops on its own LEN / DIV /
  * SWING / GATE (polymeter). The keys play the selected track; MIDI IN by GLO > SYSTEM ROUT (G_ROUTE):
@@ -70,6 +71,11 @@ static int mo_plays(const track_t *t, uint32_t note)   /* trk_note_on would soun
     return trk_index(t) < trk_live && !t->p[P_MUTE] && !((trk_hush >> trk_index(t)) & 1u) &&
            !(t->engine == ENGI_DRUM && drum_muted(note));
 }
+/* (0.9.9 ctl64) the block being handled (events_block: its samples) and the sample within it an event falls on (core.h
+ * ev_off; voice.c starts or releases the voice there). Set around the note-ons and -offs fired inside the block, 0
+ * between (a 1/2 TEMPO punch-in counts half the samples: its events land about where they would, within the block) */
+static uint32_t blk_n = CTL;
+static void ev_at(uint32_t k) { ev_off = (uint8_t)(k < blk_n ? k : blk_n); }   /* (blk_n: the next block's first) */
 /* a note the FM-1 plays (not a key's): sounded, and with ALL sent as it sounds: the punch-ins' OCT- / OCT+ and RANDOM
  * on it (pfx.c pfx_pit, pfx_rpit: drawn by trk_note_on) */
 static void seq_note_on(track_t *t, uint32_t note, uint32_t vel)
@@ -507,9 +513,11 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
     uint32_t period, cnt, list[64], len = 0, i, j, o;
     int32_t sw;
     if (t->arp_note) {
-        if (t->arp_off <= gate_n)
+        if (t->arp_off <= gate_n) {                    /* (ctl64) the gate ends at its sample */
+            ev_at(t->arp_off);
             arp_off(t);
-        else
+            ev_off = 0;
+        } else
             t->arp_off -= gate_n;
     }
     if (!t->p[P_AMODE] || !t->nheld || t->p[P_AMODE] == AM_TRNS) {   /* (TRNS: no arpeggio) */
@@ -520,9 +528,21 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
     period = div_samples((uint32_t)t->p[P_ARATE]);
     sw = t->p[P_ASWING] * (int32_t)period / 250;
     t->arp_pos += n;
-    if (t->arp_pos < period + (uint32_t)((t->arp_idx & 1u) ? sw : -sw) && t->arp_pos != 0xFFFFFFF + n)
-        return;
-    t->arp_pos = 0;
+    {
+        uint32_t per = period + (uint32_t)((t->arp_idx & 1u) ? sw : -sw);
+        if (t->arp_pos < per && t->arp_pos != 0xFFFFFFF + n)
+            return;
+        if (t->arp_pos == 0xFFFFFFF + n) {               /* the start: now */
+            t->arp_pos = 0;
+            ev_off = 0;
+        } else {                                        /* (ctl64) the step at its sample; the samples past it kept
+                                                         * (they were dropped: an ARP ran a block late a step) */
+            t->arp_pos -= per;
+            if (t->arp_pos >= n)
+                t->arp_pos = 0;
+            ev_at(n - t->arp_pos);
+        }
+    }
     /* build the note list: held notes (sorted or as played) over OCT octaves */
     for (i = 0; i < t->nheld; i++)
         list[i] = t->held[i];
@@ -543,9 +563,10 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
     if (t->arp_note)
         arp_off(t);
     if ((uint32_t)(rng() & 127u) <= (uint32_t)t->p[P_APROB]) {
-        t->arp_off = period * (uint32_t)t->p[P_AGATE] / 128u;
+        t->arp_off = period * (uint32_t)t->p[P_AGATE] / 128u + ev_off;   /* (from the step's sample) */
         if (t->p[P_AMODE] == AM_CHORD) {            /* CHORD: the first 4 notes, an octave up each step */
             arp_chord(t, list, cnt);
+            ev_off = 0;
             return;
         }
         t->arp_note = (uint8_t)list[j];
@@ -553,6 +574,7 @@ static void arp_step(track_t *t, uint32_t n, uint32_t gate_n)
             rec_note(t, t->arp_note, 100);           /* recording: what the arp plays */
         seq_note_on(t, t->arp_note, 100);
     }
+    ev_off = 0;
 }
 
 static void arp_tick(track_t *t, uint32_t n) { arp_step(t, n, n); }
@@ -921,11 +943,13 @@ static __attribute__((noinline)) void dxo_tick(track_t *t, uint32_t n)
             e->part = 255u;
             e->idx = 0xFFFFu;
             e->cnt += n;
-            if (per && e->cnt >= per) {
+            if (per && e->cnt >= per) {               /* (ctl64: the hit at its sample) */
                 e->cnt -= per;
                 if (e->cnt >= per)
                     e->cnt = 0;
+                ev_at(e->cnt >= n ? 0u : n - e->cnt);
                 dxo_hit(t, e);
+                ev_off = 0;
             }
             continue;
         }
@@ -940,8 +964,12 @@ static __attribute__((noinline)) void dxo_tick(track_t *t, uint32_t n)
             continue;
         }
         if (part != e->part) {
+            uint32_t sl = step_samples(t, div_samples((uint32_t)t->p[P_SDIV]), t->seq_idx) / r, past;
             e->part = (uint8_t)part;
+            past = t->seq_pos - part * sl;              /* (ctl64) the part's first sample in this block */
+            ev_at(past >= n ? 0u : n - past);
             dxo_hit(t, e);
+            ev_off = 0;
         }
     }
 }
@@ -1034,8 +1062,11 @@ static void keys_strum(uint32_t n)
             kb_sdue[k] = (uint16_t)(kb_sdue[k] - n);
             continue;
         }
+        ev_at(kb_sdue[k]);                            /* (ctl64) at its sample; the next gap samples after it */
         key_next(k, &trk[kb_trk[k] % NTRK]);
-        kb_sdue[k] = (uint16_t)clamp((int32_t)chord_gap(&trk[kb_trk[k] % NTRK]), 1, 65535);
+        ev_off = 0;
+        kb_sdue[k] = (uint16_t)clamp((int32_t)kb_sdue[k] + (int32_t)chord_gap(&trk[kb_trk[k] % NTRK]), 1, 65535);
+        kb_sdue[k] = (uint16_t)(kb_sdue[k] > n ? kb_sdue[k] - n : 0u);   /* (within this block still: the next's first) */
     }
 }
 
@@ -1555,10 +1586,17 @@ static void chord_glide(track_t *t, const uint8_t *nn, const uint8_t *vv, uint32
                 for (k = 0; k < NVOICE; k++)
                     if (t->v[k].age == vage && t->v[k].active) {
                         voice_t *w = &t->v[k];
-                        int32_t d;
-                        w->pitch_cur = (cg_near(n[i], o, a, 1) + tr) * 16 + t->pfx_rpit;
+                        int32_t d, pc = (cg_near(n[i], o, a, 1) + tr) * 16 + t->pfx_rpit;
+                        d = ((int32_t)n[i] + tr) * 16 + t->pfx_rpit - pc;   /* (pitch16 - pitch_cur, as voice_start sets it) */
+                        if (w->sub && (w->pn_flags & PN_START)) {   /* (ctl64) starting later in the block: with it */
+                            w->pn_flags |= PN_GLIDE;
+                            w->pn_pcur = pc;
+                            w->pn_gstep = glide_q8(d, ticks);
+                            w->pn_fin = (uint16_t)(d < 0 ? -d : d);
+                            continue;
+                        }
+                        w->pitch_cur = pc;
                         w->gfrom = (int16_t)w->pitch_cur;   /* (0.9.8: VOICE's glide from there) */
-                        d = w->pitch16 - w->pitch_cur;
                         w->gstep = glide_q8(d, ticks);
                         w->gacc = 0;
                         w->fin_d = (uint16_t)(d < 0 ? -d : d);   /* (in as it glides; 0.6.82) */
@@ -1635,7 +1673,7 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
         vel = (s->flags & SF_ACCENT) ? 127u : (s->vel ? s->vel : 96u);
     } else if (s->time == ST_TIE) {
         if (t->seq_n) {
-            t->seq_off = gate + period / 2u;
+            t->seq_off = gate + period / 2u + ev_off;
             t->seq_hold = (s->flags & SF_SLIDE) != 0 || next_tie || chord_auto(t, len);   /* chains hold at any GATE /
                                                          * swing; (0.6.81) GLIDE on POLY: to the next chord */
         }
@@ -1774,7 +1812,7 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
         for (i = 0; i < m; i++)
             if (!((sk >> i) & 1u))
                 t->seq_notes[t->seq_n++] = nn[i];
-        t->seq_off = gate;
+        t->seq_off = gate + ev_off;                 /* (ctl64: from the step's sample) */
         t->seq_hold = (s->flags & SF_SLIDE) != 0 || next_tie || chord_auto(t, len);
         return;
     }
@@ -1814,7 +1852,8 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
             t->ss_vv[t->ss_n++] = vv[ord[q]];
             sk |= 1u << ord[q];
         }
-        t->ss_due = t->ss_gap = (uint32_t)clamp((int32_t)(g < cap ? g : cap), 1, 65535);
+        t->ss_gap = (uint32_t)clamp((int32_t)(g < cap ? g : cap), 1, 65535);
+        t->ss_due = t->ss_gap + ev_off;             /* (ctl64: from the step's sample) */
     }
     if (hdel) {                                     /* (0.6.87) HUMAN TIME: every note of the step queued, hdel late
                                                      * (a strum's after it, its gaps kept; else all at once) */
@@ -1827,7 +1866,7 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
                 sk |= 1u << q;
             }
         t->ss_gap = gap;
-        t->ss_due = hdel ? hdel : 1u;
+        t->ss_due = (hdel ? hdel : 1u) + ev_off;    /* (ctl64: from the step's sample) */
         t->ss_tch = t->dtch;                        /* (0.8.5: the queued hits keep their TOUCH) */
         gate += hdel;
     }
@@ -1850,6 +1889,12 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
                 for (k2 = 0; k2 < NVOICE; k2++) {
                     voice_t *v = &t->v[k2];
                     if (v->age == vage && v->active) {
+                        if (v->sub && (v->pn_flags & PN_START)) {   /* (ctl64) starting later in the block: with it */
+                            v->pn_flags |= PN_BEND;
+                            v->pn_bend = (int16_t)d;
+                            v->pn_gstep = glide_q8(d, ticks);
+                            continue;
+                        }
                         v->pitch_cur = v->pitch16;
                         v->pitch16 = clamp(v->pitch16 + d, 0, 2047);
                         v->gstep = glide_q8(d, ticks);
@@ -1871,7 +1916,7 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
     for (i = 0; i < m; i++)
         if (!((sk0 >> i) & 1u))
             t->seq_notes[t->seq_n++] = nn[i];
-    t->seq_off = gate;
+    t->seq_off = gate + ev_off;                     /* (ctl64: from the step's sample) */
     t->seq_hold = hits == 1u && ((s->flags & SF_SLIDE) != 0 || next_tie ||   /* next step a TIE: keep the notes to it */
                                  (!kit && !arp && chord_auto(t, len)));   /* (0.6.81) GLIDE on POLY: to the next chord */
 }
@@ -1881,15 +1926,18 @@ static __attribute__((noinline)) void seq_step(track_t *t, const step_t *s, uint
 static __attribute__((noinline)) void seq_ratchet(track_t *t, uint32_t period)
 {
     const step_t *s = t->cv_on ? &t->cvs : &seq_steps(t)[seq_src(t, t->seq_idx)];   /* (0.6.47: C.LEN's) */
-    uint32_t div, hits = step_parts(t, s, &div);
+    uint32_t div, hits = step_parts(t, s, &div), q = step_samples(t, period, t->seq_idx) / div, at;
     if (t->rat_left >= hits) {
         t->rat_left = 0;
         return;
     }
-    if (t->seq_pos < (hits - t->rat_left) * (step_samples(t, period, t->seq_idx) / div))
-        return;
-    t->rat_left--;
-    seq_step(t, s, period, SEQ_REP);
+    while (t->rat_left && t->seq_pos >= (at = (hits - t->rat_left) * q)) {   /* (ctl64) each part at its sample (every
+                                                         * one due in this block; a part at the block's end: the next) */
+        ev_at(t->seq_pos - at >= blk_n ? 0u : blk_n - (t->seq_pos - at));
+        t->rat_left--;
+        seq_step(t, s, period, SEQ_REP);
+        ev_off = 0;
+    }
 }
 
 /* (0.8.5) the lanes ratcheting on the playing step (LM_X2 / X4 / X8, seq_step struck their first part): each again at
@@ -1914,11 +1962,13 @@ static __attribute__((noinline)) void seq_lane_rat(track_t *t, uint32_t period, 
         pn = pos / (q ? q : 1u);
         if (pn <= prev / (q ? q : 1u) || pn >= r)
             continue;
+        ev_at(pos - pn * q >= n ? 0u : n - (pos - pn * q));   /* (ctl64) the part's first sample in this block */
         if ((s->hit >> l) & 1u)
             seq_note_on(t, DRUM_LANE_NOTE[l], (s->acc >> l) & 1u ? 127u : vel);
         for (k = 0; k < s->n && k < 4u; k++)
             if (drum_lane(s->note[k]) == l)
                 seq_note_on(t, s->note[k], vel);
+        ev_off = 0;
     }
     t->lr_on = (uint8_t)any;
 }
@@ -1955,29 +2005,32 @@ static void seq_tick(track_t *t, uint32_t n)
         t->pfx_half = (uint8_t)(h & 1u);
         n = h >> 1;
     }
-    if (t->ss_i < t->ss_n) {                         /* (0.6.84) STRUM: the step's chord coming in */
-        if (t->ss_due > n) {
-            t->ss_due -= n;
-        } else {
-            do {                                    /* (0.6.87: HUMAN TIME without a strum: the chord together) */
-                t->dtch = t->ss_tch;
-                if (trk_kit(t)) {                       /* (0.8.5) its lane's TOUCH, from the step playing */
-                    const step_t *ps = t->cv_on ? &t->cvs : &seq_steps(t)[seq_src(t, t->seq_idx)];
-                    uint32_t lt = lm_touch(step_lmode(ps, drum_lane(t->ss_nn[t->ss_i])));
-                    if (lt)
-                        t->dtch = (uint8_t)lt;
-                }
-                seq_note_on(t, t->ss_nn[t->ss_i], t->ss_vv[t->ss_i]);
-                t->dtch = 0;
-                t->ss_i++;
-            } while (!t->ss_gap && t->ss_i < t->ss_n);
-            t->ss_due = t->ss_gap;
+    if (t->ss_i < t->ss_n) {                         /* (0.6.84) STRUM: the step's chord coming in; (ctl64) each note
+                                                     * at its sample (ss_due: from this block's start), the next gap
+                                                     * samples after it */
+        while (t->ss_i < t->ss_n && t->ss_due <= n) {   /* (0.6.87: HUMAN TIME without a strum: the chord together) */
+            ev_at(t->ss_due);
+            t->dtch = t->ss_tch;
+            if (trk_kit(t)) {                       /* (0.8.5) its lane's TOUCH, from the step playing */
+                const step_t *ps = t->cv_on ? &t->cvs : &seq_steps(t)[seq_src(t, t->seq_idx)];
+                uint32_t lt = lm_touch(step_lmode(ps, drum_lane(t->ss_nn[t->ss_i])));
+                if (lt)
+                    t->dtch = (uint8_t)lt;
+            }
+            seq_note_on(t, t->ss_nn[t->ss_i], t->ss_vv[t->ss_i]);
+            t->dtch = 0;
+            t->ss_i++;
+            t->ss_due += t->ss_gap;
         }
+        ev_off = 0;
+        t->ss_due = t->ss_due > n ? t->ss_due - n : 0u;
     }
     if (t->seq_n && !t->seq_hold) {
-        if (t->seq_off <= n)
+        if (t->seq_off <= n) {                       /* (ctl64) the gate ends at its sample (n: the next block's first) */
+            ev_at(t->seq_off);
             seq_release(t);
-        else
+            ev_off = 0;
+        } else
             t->seq_off -= n;
     }
     if (!song.playing)
@@ -1992,6 +2045,8 @@ static void seq_tick(track_t *t, uint32_t n)
             break;
         start = t->seq_pos >= 0x7FFFFFFFu;
         t->seq_pos = start ? chain.carry : t->seq_pos - (cur_len - e);   /* (a start: 0; a section in: its carry) */
+        ev_at(start || t->seq_pos >= n ? 0u : n - t->seq_pos);   /* (ctl64) the step's first sample (seq_pos: the samples
+                                                         * past it at the block's end; 0 past it: the next block's first) */
         t->ext = (uint16_t)(start ? 0u : e);            /* (the next one longer by as much: the grid kept) */
         if (t->jump_to && !start) {                     /* (0.6.42) JUMP: the step it names */
             t->seq_idx = (uint16_t)((t->jump_to - 1u) % (len ? len : 1u));
@@ -2045,6 +2100,7 @@ static void seq_tick(track_t *t, uint32_t n)
             else if (skip != SEQ_MISS && CP_HAS(t, s, CP_REV, &ja) && t->seq_idx > 0u && fl_ok(t, CP_REV, ja))
                 t->rev = 1;                             /* (0.6.42) then backwards to step 1 */
         }
+        ev_off = 0;
     }
     if (t->rat_left)
         seq_ratchet(t, period);
@@ -2143,6 +2199,8 @@ static void events_block(uint32_t n)
 {
     uint32_t i, pr, fo, seq_n = n;
     uint32_t clock_mode = (uint32_t)song.g[G_CLOCK];
+    blk_n = n ? n : 1u;                                /* (ctl64: ev_at) */
+    ev_off = 0;
     if (midi_clock.mode != clock_mode) {
         seq_stop();
         memset(&midi_clock, 0, sizeof midi_clock);
@@ -2287,6 +2345,7 @@ static void events_block(uint32_t n)
     }
     if (song.playing)
         song.tick++;
+    ev_off = 0;
 }
 
 #include "song_play.c"                           /* the song: the ISR's part (song_chain.c) */

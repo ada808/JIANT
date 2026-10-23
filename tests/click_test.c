@@ -71,6 +71,7 @@ static void fresh(void)
     song.sel = 0;
     nb = 0;
 }
+#define B32(n) ((n) * 32u / CTL)                     /* (0.9.9 ctl64) n blocks of 32 samples, in blocks of CTL */
 static void run(uint32_t n)                            /* n blocks through audio_block */
 {
     int32_t out[2 * CTL];
@@ -220,7 +221,7 @@ static void sound(void)
           ms > 20.0 && ms < 40.0 && abs(dac[c_at[0]]) < c_peak[0] * 3 / 10);
     for (lv = 0; lv < 3u; lv++) {
         fresh(); grid_track(); click_mode = CLICK_ON; click_lvl = (uint8_t)lv; transport_req = 1;
-        run(100);
+        run(B32(100));
         clicks(0);
         pk[lv] = nc ? c_peak[0] : 0;
     }
@@ -229,10 +230,10 @@ static void sound(void)
           fabs(20.0 * log10(pk[1] / (double)pk[0]) - 6.02) < 0.5 && fabs(20.0 * log10(pk[2] / (double)pk[1]) - 6.02) < 0.5 &&
           fabs(20.0 * log10(pk[2] / 16384.0)) < 1.0);
     fresh(); grid_track(); click_mode = CLICK_ON; song.master_q12 = 1024; transport_req = 1;
-    run(100); clicks(0);
+    run(B32(100)); clicks(0);
     k = nc ? (uint32_t)c_peak[0] : 0u;
     fresh(); grid_track(); click_mode = CLICK_ON; song.master_q12 = 0; transport_req = 1;
-    run(100); clicks(0);
+    run(B32(100)); clicks(0);
     check("MASTER scales it as the rest of the DAC's signal (1/4: -12 dB; 0: silent)",
           fabs(20.0 * log10(pk[1] / (double)k) - 12.04) < 0.3 && nc == 0u);
 }
@@ -240,11 +241,11 @@ static void sound(void)
 static void modes(void)
 {
     uint32_t n_off, n_rec0, n_rec1, n_on, n_stop;
-    fresh(); grid_track(); transport_req = 1; run(3000); clicks(0); n_off = nc;
-    fresh(); grid_track(); click_mode = CLICK_REC; transport_req = 1; run(3000); clicks(0); n_rec0 = nc;
-    fresh(); grid_track(); click_mode = CLICK_REC; song.rec = 2u; transport_req = 1; run(3000); clicks(0); n_rec1 = nc;
-    fresh(); grid_track(); click_mode = CLICK_ON; transport_req = 1; run(3000); clicks(0); n_on = nc;
-    fresh(); grid_track(); click_mode = CLICK_ON; run(3000); clicks(0); n_stop = nc;
+    fresh(); grid_track(); transport_req = 1; run(B32(3000)); clicks(0); n_off = nc;
+    fresh(); grid_track(); click_mode = CLICK_REC; transport_req = 1; run(B32(3000)); clicks(0); n_rec0 = nc;
+    fresh(); grid_track(); click_mode = CLICK_REC; song.rec = 2u; transport_req = 1; run(B32(3000)); clicks(0); n_rec1 = nc;
+    fresh(); grid_track(); click_mode = CLICK_ON; transport_req = 1; run(B32(3000)); clicks(0); n_on = nc;
+    fresh(); grid_track(); click_mode = CLICK_ON; run(B32(3000)); clicks(0); n_stop = nc;
     check("CLICK OFF: no click; REC: only with a track armed (any); ON: always while playing; stopped: never",
           n_off == 0u && n_rec0 == 0u && n_rec1 == 5u && n_on == 5u && n_stop == 0u);
 }
@@ -323,19 +324,19 @@ static void count_in(void)
     check("CLICK REC with the count-in: its 4 beats, then the recording's from step 1 (accented), with the steps", ok);
     /* PLAY again while counting in: nothing changes; STOP: cancelled, nothing plays; PLAY: counts in again */
     fresh(); grid_track(); cin_bars = 1; song.rec = 1u; transport_req = 1;
-    run(1000); transport_req = 1; run(2000);
+    run(B32(1000)); transport_req = 1; run(B32(2000));
     ok = step_block(0, 0) == ceil_div(4u * QB, CTL);
     fresh(); grid_track(); cin_bars = 1; song.rec = 1u; transport_req = 1;
-    run(1000); transport_req = 2; run(3000);
+    run(B32(1000)); transport_req = 2; run(B32(3000));
     clicks(0);
     ok &= nc == 2u && !song.playing && !seq_counting() && step_block(0, 0) == MAXB;
-    transport_req = 1; run(10);
+    transport_req = 1; run(B32(10));
     ok &= seq_counting() && cin_left == 4u;
     check("PLAY again while counting in changes nothing; STOP cancels it (nothing plays); PLAY counts in again", ok);
     /* nothing armed: PLAY plays at once; COUNT-IN OFF: at once */
-    fresh(); grid_track(); cin_bars = 2; transport_req = 1; run(2);
+    fresh(); grid_track(); cin_bars = 2; transport_req = 1; run(B32(2));
     ok = song.playing && !seq_counting() && step_block(0, 0) == 0u;
-    fresh(); grid_track(); song.rec = 1u; transport_req = 1; run(2);
+    fresh(); grid_track(); song.rec = 1u; transport_req = 1; run(B32(2));
     ok &= song.playing && !seq_counting() && step_block(0, 0) == 0u;
     check("no track armed, or COUNT-IN OFF: PLAY plays at once, as before", ok);
 }
@@ -365,9 +366,9 @@ static void count_in_notes(void)
     fm1_in.notes = 1u << ka;
     run(1);
     ok = voice_on(60);                                 /* (it sounds at once) */
-    run(start - nb + 300u);                            /* held ~2 steps past the start */
+    run(start - nb + B32(300));                            /* held ~2 steps past the start */
     fm1_in.notes = 0;
-    run(400);
+    run(B32(400));
     ok &= trk[0].step[0].time == ST_NOTE && trk[0].step[0].n == 1u && trk[0].step[0].note[0] == 60u &&
           trk[0].step[1].time == ST_TIE && trk[0].step[2].time == ST_REST;
     check("a note held from the count-in's last eighth: on step 1, then tied while held (it sounded at once)", ok);
@@ -375,27 +376,27 @@ static void count_in_notes(void)
     fresh(); grid_track(); cin_bars = 1; song.rec = 1u; transport_req = 1;
     run(half + 20u);
     fm1_in.notes = 1u << kb;
-    run(60);
+    run(B32(60));
     fm1_in.notes = 0;
-    run(start - nb + 400u);
+    run(start - nb + B32(400));
     ok = trk[0].step[0].time == ST_NOTE && trk[0].step[0].note[0] == 64u && trk[0].step[1].time == ST_REST;
     check("a note let go before step 1 (in the last eighth): step 1 alone", ok);
     /* earlier in the last beat (its first half) or before: not recorded */
     fresh(); grid_track(); cin_bars = 1; song.rec = 1u; transport_req = 1;
     run(last + 50u);
     fm1_in.notes = 1u << ka;
-    run(60);
+    run(B32(60));
     fm1_in.notes = 0;
-    run(start - nb + 400u);
+    run(start - nb + B32(400));
     ok = trk[0].step[0].time == ST_REST && trk[0].step[0].n == 0u;
     check("a note before the last eighth: played, not recorded", ok);
     /* a track not armed: nothing */
     fresh(); grid_track(); cin_bars = 1; song.rec = 2u; transport_req = 1;
     run(half + 20u);
     fm1_in.notes = 1u << ka;
-    run(30);
+    run(B32(30));
     fm1_in.notes = 0;
-    run(start - nb + 100u);
+    run(start - nb + B32(100));
     check("a note into a track not armed: not recorded", trk[0].step[0].time == ST_REST && trk[1].step[0].time == ST_REST);
 }
 
@@ -408,7 +409,7 @@ static void ext_clock(void)
     fresh(); grid_track();
     song.g[G_CLOCK] = 1;
     cin_bars = 2; song.rec = 1u; click_mode = CLICK_ON;
-    run(4);                                            /* (the clock mode taken) */
+    run(B32(4));                                            /* (the clock mode taken) */
     for (b = 0; b < ceil_div(QB * 9u, CTL); b++) {
         double now = (double)nb * CTL;
         if (!sent_start && b == 10u) {
@@ -441,9 +442,9 @@ static void ext_clock(void)
     }
     fresh(); grid_track();
     song.g[G_CLOCK] = 1; cin_bars = 1; song.rec = 1u;
-    run(2);
+    run(B32(2));
     transport_req = 1;                                 /* PLAY on the FM-1 with CLK EXT: as a Start, no count-in */
-    run(2);
+    run(B32(2));
     check("external clock: PLAY on the FM-1 starts as before (as a Start), never a count-in", song.playing && !seq_counting());
 }
 

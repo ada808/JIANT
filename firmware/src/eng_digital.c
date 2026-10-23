@@ -262,6 +262,7 @@ static const engine_t ENG_DIGITAL = {
     .npresets = NELEM(DIGITAL_PRESETS),
     .note_on = digital_note_on,
     .render = digital_render,
+    .whole = 1,
     .knob = {P_E4, P_E5, P_E6, P_REL},
     .keep = 0xE0,                /* the feedback history and op 4's phase; the modulator envelope restarts */
 };

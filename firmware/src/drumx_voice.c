@@ -53,10 +53,10 @@ static uint32_t dv_exp2(uint32_t x)
     m = 65536u + ((f * (45594u + ((f * (14851u + ((f * 5092u) >> 12))) >> 12))) >> 12);
     return m << (x >> 12);
 }
-/* tau (us) -> per-block decay, Q16: e^(-CTL / (tau fs)), to the fourth order */
+/* tau (us) -> per-block decay, Q16: e^(-CTL / (tau fs)), to the fourth order (2^16 CTL / FS us) */
 static uint32_t dv_kb(uint32_t us)
 {
-    uint32_t x = 47554467u / (us | 1u), x2, x3, x4, k;
+    uint32_t x = (uint32_t)(65536.0 * CTL / FS * 1000000.0) / (us | 1u), x2, x3, x4, k;
     if (x > 46000u)
         x = 46000u;
     x2 = (x * x) >> 16;
