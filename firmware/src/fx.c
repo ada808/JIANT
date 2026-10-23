@@ -2327,6 +2327,7 @@ static uint8_t mc_mask_last;                             /* the parts core 1 had
 static uint32_t mc_jobs;                                 /* (0.6.72) blocks core 1 rendered parts in (console status) */
 static void mix_part_m(track_t *t, uint32_t n);         /* (below) */
 #define MC_FX 0x80u                                       /* (0.6.75) mc_job: the buses too */
+static uint32_t mc_order(uint32_t mask, uint8_t *out);   /* (below) */
 #if FELUCCA_HOTRAM
 static void fx_run0(uint32_t n);                         /* (below) */
 #define fx_run fx_run0                                   /* (the tests' name for it) */
@@ -2343,11 +2344,14 @@ static __attribute__((noinline)) void mc_job(uint32_t a)  /* core 1: the buses (
                                                          * (build.py HOT_FNS), out of the I-cache the engines share */
     for (i = 0; i < n; i++)
         c1_mix.l[i] = c1_mix.r[i] = c1_mix.c[i] = c1_mix.d[i] = c1_mix.rv[i] = c1_mix.sl[i] = c1_mix.sr[i] = 0;
-    for (i = 0; i < NPART; i++)
-        if ((a >> i) & 1u) {
-            mc_cur = (int8_t)i;
-            mix_part_m(&trk[i], n);
+    {
+        uint8_t order[NPART];
+        uint32_t m = mc_order(a & ((1u << NPART) - 1u), order);   /* (0.9.9-beta4) by engine */
+        for (i = 0; i < m; i++) {
+            mc_cur = (int8_t)order[i];
+            mix_part_m(&trk[order[i]], n);
         }
+    }
     mc_cur = -1;
 }
 static uint32_t mc_cost(const track_t *t)               /* a part's share of the work, roughly: its voices by engine */
@@ -2409,23 +2413,24 @@ static int mc_voice_noise(const track_t *t)
             t->p[P_M1DST + 3u*k] == MD_E1 + 5u) return 1;
     return 0;
 }
-/* The greedy measured-cost split keeps dependency groups together: DRUM's kit, VOICE's breath noise, AUTO PAN's
- * random stream. Shared-rng LFOs follow the buses on core 1. As in SLOOP's units_split, ownership outranks cost. */
-static __attribute__((noinline)) uint32_t mc_split(uint32_t c1)   /* c1: what core 1 has already (0.6.75: the buses) */
+/* (0.9.9-beta4) the parts as units: a dependency group (DRUM's kit, VOICE's breath noise, AUTO PAN's random stream)
+ * is one unit, at its first part's index (unit[i] = its parts' bits; 0: in another's); *fixed: the parts whose LFO
+ * draws the shared rng (they follow the buses on core 1). Shared by the split and the render order (mc_order).
+ * Returns 0 when a part put to sleep still fades (its transition, voice_kill's counters, rendered serially) */
+static __attribute__((noinline)) int mc_units(uint32_t *unit, uint32_t *fixed)
 {
-    uint32_t i, j, k, c0 = 0, mask = 0, fixed = 0, cost[NPART], unit[NPART], dep[3] = {0, 0, 0}, left = 0;
+    uint32_t i, k, dep[3] = {0, 0, 0}, fx = 0;
     for (i = 0; i < NPART; i++) {
         const track_t *t = &trk[i];
         uint32_t bit = 1u << i;
-        unit[i] = bit; cost[i] = 0;
+        unit[i] = bit;
         if (ENGINES[t->engine] == &ENG_DRUM) dep[0] |= bit;
         if (ENGINES[t->engine] == &ENG_FORMANT && mc_voice_noise(t)) dep[1] |= bit;
         if ((t->p[P_APDEP] && t->p[P_APWAVE] >= 4) || t->xf_on) dep[2] |= bit;
-        if (mc_rng_part(i)) fixed |= bit;
-        /* Parts put to sleep still fade: render that transition serially, including voice_kill's counters. */
+        if (mc_rng_part(i)) fx |= bit;
         if (i >= trk_live)
             for (k = 0; k < NVOICE; k++)
-                if (t->v[k].active) return (1u << NPART) - 1u;
+                if (t->v[k].active) return 0;
     }
     for (k = 0; k < NELEM(dep); k++) {
         uint32_t group = 0, first = NPART;
@@ -2436,7 +2441,52 @@ static __attribute__((noinline)) uint32_t mc_split(uint32_t c1)   /* c1: what co
             }
         if (first < NPART) unit[first] = group;
     }
+    *fixed = fx;
+    return 1;
+}
+/* (0.9.9-beta4) the order a core renders the parts of mask in, out[] (their indices; the count returned): by engine,
+ * the parts sharing one back to back, so its code is fetched into the I-cache (32 KiB, shared by both cores and the
+ * UI) once a block, not once a part (Kirill's audit, LOOM-8). The same bits in any order: each part adds into the mix
+ * (int32 sums), and the parts that share state keep their index order among themselves: a dependency group's parts
+ * (mc_units) and the rng-fixed parts (the order of their draws is the sound) move as one, in their first part's
+ * place; the rest commute (mc_split sends them to either core as it is). Groups come in the order of their first
+ * part, each unit's parts ascending: with every part on one core and no shared engine, the order of before */
+static __attribute__((noinline)) uint32_t mc_order(uint32_t mask, uint8_t *out)
+{
+    uint32_t unit[NPART], fixed, i, j, k, n = 0, done = 0, first = NPART;
+    if (!mc_units(unit, &fixed))
+        fixed = 0;                                      /* (a sleeping part fading: every part on this core, as it is) */
+    for (i = 0; i < NPART; i++)                         /* the rng-fixed parts: one unit */
+        if (unit[i] & fixed) {
+            if (first == NPART) first = i;
+            else { unit[first] |= unit[i]; unit[i] = 0; }
+        }
     for (i = 0; i < NPART; i++) {
+        unit[i] &= mask;
+        if (!unit[i] || ((done >> i) & 1u)) continue;
+        uint32_t eng = trk[i].engine;
+        for (j = i; j < NPART; j++)
+            if (unit[j] && !((done >> j) & 1u) && trk[j].engine == eng) {
+                done |= 1u << j;
+                for (k = 0; k < NPART; k++)
+                    if ((unit[j] >> k) & 1u)
+                        out[n++] = (uint8_t)k;
+            }
+    }
+    return n;
+}
+/* The greedy measured-cost split keeps dependency groups together: DRUM's kit, VOICE's breath noise, AUTO PAN's
+ * random stream. Shared-rng LFOs follow the buses on core 1. As in SLOOP's units_split, ownership outranks cost.
+ * (0.9.9-beta4) The core with less to do takes the dearest unit left, preferring one of an engine it already has
+ * when that one costs at least half the dearest: a core renders whole engine groups where the balance allows
+ * (mc_order renders them back to back), the engine's code in its I-cache once a block */
+static __attribute__((noinline)) uint32_t mc_split(uint32_t c1)   /* c1: what core 1 has already (0.6.75: the buses) */
+{
+    uint32_t i, j, k, c0 = 0, mask = 0, m0 = 0, fixed, cost[NPART], unit[NPART], left = 0;
+    if (!mc_units(unit, &fixed))
+        return (1u << NPART) - 1u;
+    for (i = 0; i < NPART; i++) {
+        cost[i] = 0;
         for (k = 0; k < NPART; k++)
             if ((unit[i] >> k) & 1u) {
                 uint32_t v = mc_cost(&trk[k]);
@@ -2449,15 +2499,23 @@ static __attribute__((noinline)) uint32_t mc_split(uint32_t c1)   /* c1: what co
         }
     }
     while (left) {
+        uint32_t to1 = c1 < c0, have = to1 ? mask : m0, e = NPART;
         for (j = NPART, i = 0; i < NPART; i++)
             if (((left >> i) & 1u) && (j == NPART || cost[i] > cost[j]))
                 j = i;
+        for (i = 0; i < NPART; i++)                     /* .. the dearest of an engine that core has, if dear enough */
+            if (((left >> i) & 1u) && (e == NPART || cost[i] > cost[e]))
+                for (k = 0; k < NPART; k++)
+                    if (((have >> k) & 1u) && trk[k].engine == trk[i].engine) { e = i; break; }
+        if (e < NPART && cost[e] * 2u >= cost[j])
+            j = e;
         left &= ~(1u << j);
-        if (c1 < c0) {
+        if (to1) {
             c1 += cost[j];
             mask |= unit[j];
         } else {
             c0 += cost[j];
+            m0 |= unit[j];
         }
     }
     return mask;
@@ -2605,9 +2663,12 @@ static __attribute__((noinline)) void mix_block(int32_t *out, uint32_t n)   /* (
     }
     if (!c1j)
         fx_run0(n);                                     /* (0.6.75) the buses here: one core */
-    for (i = 0; i < NPART; i++)
-        if (!((c1m >> i) & 1u))
-            mix_part_m0(&trk[i], n);
+    {
+        uint8_t order[NPART];
+        uint32_t m = mc_order(~c1m & ((1u << NPART) - 1u), order);   /* (0.9.9-beta4) by engine (one core: all of them) */
+        for (i = 0; i < m; i++)
+            mix_part_m0(&trk[order[i]], n);
+    }
     if (c1j) {
         if (!mc_wait()) {
             if (c1m)
