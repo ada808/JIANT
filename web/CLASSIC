@@ -3,6 +3,7 @@
 # Newest first. Up to make_site.py's KEEP_OLD are offered. A version in web/WITHDRAWN stays out.
 # (0.9.9-beta4) one milestone per line of the history, so anyone can pick the version they liked.
 fe81db8885d13d17f88b1268e3641c04f199b2d5  # JIANT 0.9.9-gen2 (2026-10-25): ULTRA STABLE, the public version before 0.9.9-par3 (the one to go back to)
+eea92834f4be7b090c2c5ac1e38b8416931fbe25  # JIANT 0.9.9-par8 (2026-10-26): the public version before 0.9.9-par9
 df2b17612287b18d2d6450ac38cff8603a3ab20f  # JIANT 0.9.9-par6 (2026-10-26): the public version before 0.9.9-par8
 bb3852598397924b79a2e2d620f3fefe9c8b2c9f  # JIANT 0.9.9-par5 (2026-10-25): the public version before 0.9.9-par6
 ee63cee99edc071482120cd647eab940ea4746c6  # JIANT 0.9.9-par4 (2026-10-25): the public version before 0.9.9-par5 (EBM at 126-135)
