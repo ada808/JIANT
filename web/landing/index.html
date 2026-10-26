@@ -236,13 +236,13 @@ footer .tm{flex-basis:100%;letter-spacing:0}
 
   <section class="hero" id="enter">
     <div class="pitch brk">
-      <p class="lede" data-i18n="lede">A free firmware that turns the FM-1 into a complete instrument: six tracks, nine synthesis engines, a deep sequencer and effects, all inside the little keyboard. Install it from your browser in a couple of minutes, and go back to the official firmware whenever you want.</p>
+      <p class="lede" data-i18n="lede">A free firmware that turns the FM-1 into a complete instrument: six tracks, eleven synthesis engines, a deep sequencer and effects, all inside the little keyboard. Install it from your browser in a couple of minutes, and go back to the official firmware whenever you want.</p>
       <div class="ctas">
         <a class="btn hot" href="https://juanjiant-bit.github.io/JIANT/webapp/installer/"><span class="sq"></span><span data-i18n="cta_install">Install on your FM-1</span></a>
         <a class="btn" href="https://juanjiant-bit.github.io/JIANT/emu/" data-i18n="cta_emu">Try it in the browser</a>
         <a class="btn" href="https://juanjiant-bit.github.io/JIANT/webapp/editor/" data-i18n="cta_editor">Open the editor</a>
       </div>
-      <p class="ver"><span data-i18n="ver">Current version:</span> <b id="ver">v0.9.2</b></p>
+      <p class="ver"><span data-i18n="ver">Current version:</span> <b id="ver">v0.9.9-par9</b></p>
     </div>
     <figure class="device brk" style="margin:0">
       <canvas id="fm1" role="img" aria-label="Drawing of the M-VAVE FM-1: MASTER, SELECT, PRESETS and ALGORITHM knobs with OCT- and OCT+ on the left, a small square screen showing JIANT's HOME with one creature per track, KNOB1 to KNOB4 over a grid of twelve buttons (FX, SEL, ENV, LFO, EDIT, GLO, HOME, SAVE, ARP, SEQ, PLAY/STOP, REC), and two rows of touch keys that light orange as a demo arpeggio plays"></canvas>
@@ -293,10 +293,10 @@ footer .tm{flex-basis:100%;letter-spacing:0}
       <canvas id="zoo" role="img" aria-label="The nine species: ANALOG radiolarian, FM6 pollen grain, PHASE amoeba, LOFI diatom, VOICE hydra, WHEEL ciliate, NOISE spore, DRUM-X colony, ANIMAL larva"></canvas>
     </div>
     <div class="organs">
-      <div class="org brk"><div class="hd"><span class="circ">A</span><span data-i18n="a_o">engines</span></div><h3 data-i18n="a_h">9 synthesis engines</h3><p data-i18n="a_p">ANALOG, FM6 (six operators, 32 algorithms, DX7 banks), PHASE, LOFI, VOICE (it sings words in Spanish, English and Japanese), WHEEL, NOISE, ANIMAL (birds, insects and frogs from physical models) and DRUM-X. No samples: everything is synthesized.</p></div>
+      <div class="org brk"><div class="hd"><span class="circ">A</span><span data-i18n="a_o">engines</span></div><h3 data-i18n="a_h">11 synthesis engines</h3><p data-i18n="a_p">ANALOG, FM6 (six operators, 32 algorithms, DX7 banks), PHASE, LOFI, VOICE (it sings words in Spanish, English and Japanese), WHEEL, NOISE, ANIMAL (birds, insects and frogs from physical models), STRING (a plucked, struck or bowed string), ADD (additive) and DRUM-X. No samples: everything is synthesized.</p></div>
       <div class="org brk"><div class="hd"><span class="circ">B</span><span data-i18n="b_o">heart</span></div><h3 data-i18n="b_h">DRUM-X</h3><p data-i18n="b_p">A drum kit of eight synthesized sounds, each with two sides: MORPH moves the whole kit from one to the other, live. In every octave the same keys: ratchets above, short, ghost and flam hits below.</p></div>
       <div class="org brk"><div class="hd"><span class="circ">C</span><span data-i18n="c_o">nervous system</span></div><h3 data-i18n="c_h">64-step sequencer</h3><p data-i18n="c_p">A piano roll per track, chords, probability, ratchets, extra playheads, recording off the grid to a 64th of a step, and MUTATE, which transforms sound and pattern every few bars.</p></div>
-      <div class="org brk"><div class="hd"><span class="circ">D</span><span data-i18n="d_o">membrane</span></div><h3 data-i18n="d_h">Effects and master</h3><p data-i18n="d_p">Delay, five reverbs (SHIMMER, RESO, CLOUD…), chorus, slicer, live punch-in effects, a DJ filter on the whole mix and a master with limiter, clip and punch.</p></div>
+      <div class="org brk"><div class="hd"><span class="circ">D</span><span data-i18n="d_o">membrane</span></div><h3 data-i18n="d_h">Effects and master</h3><p data-i18n="d_p">Delay, five reverbs (SHIMMER, RESO, CLOUD…), chorus, slicer, live punch-in effects, a DJ filter on the whole mix and a master with limiter, clip, punch, tape and a 4-band EQ.</p></div>
       <div class="org brk"><div class="hd"><span class="circ">E</span><span data-i18n="e_o">memory</span></div><h3 data-i18n="e_h">Songs and the generator</h3><p data-i18n="e_p">Four sections per project, an ARRANGE page to chain them, and a generator that writes a whole song idea: from a genre, or in EXPLORE, breaking every rule.</p></div>
       <div class="org brk"><div class="hd"><span class="circ">F</span><span data-i18n="f_o">roots</span></div><h3 data-i18n="f_h">USB audio and MIDI</h3><p data-i18n="f_p">The FM-1 becomes an audio interface that keeps its time: every track on its own channel into your DAW (STEMS), ready to record each part on its own. MIDI over USB, Bluetooth and TRS.</p><span class="go" data-i18n="f_go">A separate product: coming soon</span></div>
     </div>
@@ -567,7 +567,7 @@ const energy=(k,t)=>reduce?.35:Math.exp(-(((t/BEAT)*DIV[k%9]/4)%1)*5);
 /* languages: EN (the page's own text), ES, 中文, 日本語; the browser's language at first, then the choice (when storage allows) */
 (function(){
   const ES={live:'gratis · código abierto · GPL-3.0',kicker:'un firmware para el M-VAVE FM-1',down:'entrar al organismo',
-    lede:'Un firmware gratis que convierte al FM-1 en un instrumento completo: seis pistas, nueve motores de síntesis, un secuenciador profundo y efectos, todo adentro del tecladito. Se instala desde el navegador en un par de minutos, y podés volver al firmware oficial cuando quieras.',
+    lede:'Un firmware gratis que convierte al FM-1 en un instrumento completo: seis pistas, once motores de síntesis, un secuenciador profundo y efectos, todo adentro del tecladito. Se instala desde el navegador en un par de minutos, y podés volver al firmware oficial cuando quieras.',
     cta_install:'Instalar en tu FM-1',cta_emu:'Probarlo en el navegador',cta_editor:'Abrir el editor',ver:'Versión actual:',dev_cap:'HOME: una criatura por pista, se hincha con su sonido',
     s_eb:'Empezá acá',s_h2:'Tres pasos, sin programar',s_in:'Todo funciona en el navegador. No hace falta instalar ningún programa, y podés probar JIANT antes de tocar tu FM-1.',
     st1_h:'Probalo en el navegador',st1_p:'El emulador corre el firmware real en tu compu o tu celular. Tocá con el teclado, cargá una canción, escuchá cada motor.',st1_a:'No necesitás un FM-1',st1_b:'Renderiza los stems de una canción desde tu backup',st1_go:'Abrir el emulador',
@@ -575,10 +575,10 @@ const energy=(k,t)=>reduce?.35:Math.exp(-(((t/BEAT)*DIV[k%9]/4)%1)*5);
     st3_h:'Editá y hacé backup',st3_p:'El editor web muestra tus sonidos y ajustes en la pantalla de la compu mientras el FM-1 sigue sonando.',st3_a:'Mandá bancos DX7 a FM6, organizá presets',st3_b:'Backup de todos tus proyectos con un clic',st3_go:'Abrir el editor',
     need:'Necesitás: Chrome o Edge en una computadora (WebUSB y Web MIDI) · un cable USB que pase datos, no solo carga.',
     i_eb:'Qué tiene adentro',i_h2:'Un organismo, nueve especies',i_in:'Cada motor es una especie, dibujada por el propio firmware. En HOME cada pista es una criatura de la especie de su motor: su forma sale de sus perillas, y se hincha y se calienta con su propio audio.',zoo_k:'Los nueve motores, como los dibuja el FM-1',
-    a_o:'motores',a_h:'9 motores de síntesis',a_p:'ANALOG, FM6 (seis operadores, 32 algoritmos, bancos DX7), PHASE, LOFI, VOICE (canta palabras en castellano, inglés y japonés), WHEEL, NOISE, ANIMAL (pájaros, insectos y ranas con modelos físicos) y DRUM-X. Sin samples: todo es síntesis.',
+    a_o:'motores',a_h:'11 motores de síntesis',a_p:'ANALOG, FM6 (seis operadores, 32 algoritmos, bancos DX7), PHASE, LOFI, VOICE (canta palabras en castellano, inglés y japonés), WHEEL, NOISE, ANIMAL (pájaros, insectos y ranas con modelos físicos), STRING (una cuerda pulsada, golpeada o con arco), ADD (aditiva) y DRUM-X. Sin samples: todo es síntesis.',
     b_o:'corazón',b_h:'DRUM-X',b_p:'Una batería de ocho sonidos sintetizados, cada uno con dos caras: MORPH lleva todo el kit de una a la otra, en vivo. En cada octava, las mismas teclas: ratchets arriba, golpes cortos, ghost y flam abajo.',
     c_o:'sistema nervioso',c_h:'Secuenciador de 64 pasos',c_p:'Un piano roll por pista, acordes, probabilidad, ratchets, cabezales extra, grabación fuera de la grilla hasta 1/64 de paso, y MUTATE, que transforma sonido y patrón cada tantos compases.',
-    d_o:'membrana',d_h:'Efectos y master',d_p:'Delay, cinco reverbs (SHIMMER, RESO, CLOUD…), chorus, slicer, efectos punch-in en vivo, un filtro DJ sobre toda la mezcla y un master con limiter, clip y punch.',
+    d_o:'membrana',d_h:'Efectos y master',d_p:'Delay, cinco reverbs (SHIMMER, RESO, CLOUD…), chorus, slicer, efectos punch-in en vivo, un filtro DJ sobre toda la mezcla y un master con limiter, clip, punch, cinta (TAPE) y EQ de 4 bandas.',
     e_o:'memoria',e_h:'Canciones y generador',e_p:'Cuatro secciones por proyecto, una página ARRANGE para encadenarlas, y un generador que escribe una idea de canción entera: desde un género, o en EXPLORE, rompiendo todas las reglas.',
     f_o:'raíces',f_h:'Audio USB y MIDI',f_p:'El FM-1 se vuelve una interfaz de audio que no pierde el tiempo: cada pista en su propio canal hacia tu DAW (STEMS), listo para grabar cada parte por separado. MIDI por USB, Bluetooth y TRS.',f_go:'Producto aparte: muy pronto',
     nv_eb:'Orientarse',nv_h2:'Seis reglas, un mapa',nv_in:'Desde la 0.9.2 todas las secciones se manejan igual: aprendés seis reglas una vez y conocés todo el sinte. El mapa muestra los grupos y las páginas de cada botón en el orden en que los recorre SELECT, en cualquiera de las tres pieles (AIR, COLORS, HUD).',nv_cap:'El mapa de navegación · hacé clic para verlo grande (SVG, con zoom)',
@@ -603,7 +603,7 @@ const energy=(k,t)=>reduce?.35:Math.exp(-(((t/BEAT)*DIV[k%9]/4)%1)*5);
     nat_k:'Página nueva · frecuencia',nat_h:'La frecuencia en la naturaleza',nat_p:'La materia es luz, el color es frecuencia: una escalera del ciclo solar a los rayos gamma, y cuatro ejemplos que suenan de cómo un sintetizador ya vive ahí.',nat_go:'Subir la escalera →',f_nat:'La frecuencia en la naturaleza',
     tm:'Hecho sobre Felucca de Hügelton Instruments. M-VAVE y FM-1 son marcas de sus respectivos dueños; JIANT no está afiliado ni avalado por ellos, ni por Hügelton Instruments.'};
   const ZH={live:'免费 · 开源 · GPL-3.0',kicker:'M-VAVE FM-1 的固件',down:'进入有机体',
-    lede:'一款免费固件，把 FM-1 变成一件完整的乐器：六条音轨、九种合成引擎、深度音序器和效果器，全部装进这台小键盘里。在浏览器里几分钟就能装好，想回到官方固件随时都可以。',
+    lede:'一款免费固件，把 FM-1 变成一件完整的乐器：六条音轨、十一种合成引擎、深度音序器和效果器，全部装进这台小键盘里。在浏览器里几分钟就能装好，想回到官方固件随时都可以。',
     cta_install:'安装到你的 FM-1',cta_emu:'在浏览器里试玩',cta_editor:'打开编辑器',ver:'当前版本：',dev_cap:'HOME：每条音轨一个生物，随声音膨胀',
     s_eb:'从这里开始',s_h2:'三步完成，无需编程',s_in:'一切都在浏览器中运行。无需安装任何程序，还可以在动你的 FM-1 之前先试玩 JIANT。',
     st1_h:'在浏览器里试玩',st1_p:'模拟器在你的电脑或手机上运行真正的固件。用键盘演奏，载入一首歌，听听每一种引擎。',st1_a:'不需要 FM-1',st1_b:'可从你的备份渲染一首歌的分轨',st1_go:'打开模拟器',
@@ -611,10 +611,10 @@ const energy=(k,t)=>reduce?.35:Math.exp(-(((t/BEAT)*DIV[k%9]/4)%1)*5);
     st3_h:'编辑与备份',st3_p:'网页编辑器在电脑屏幕上显示你的音色和设置，FM-1 同时照常演奏。',st3_a:'把 DX7 音色库发送到 FM6，管理预设',st3_b:'一键备份所有工程',st3_go:'打开编辑器',
     need:'需要：电脑上的 Chrome 或 Edge（WebUSB 与 Web MIDI）· 一根能传数据的 USB 线，而不只是充电线。',
     i_eb:'里面有什么',i_h2:'一个有机体，九个物种',i_in:'每种引擎都是一个物种，由固件亲自绘制。在 HOME 页面，每条音轨都是其引擎物种的一个生物：形状来自它的旋钮，并随自身的音频膨胀、升温。',zoo_k:'九种引擎，正如 FM-1 所绘',
-    a_o:'引擎',a_h:'9 种合成引擎',a_p:'ANALOG、FM6（六算子、32 种算法、DX7 音色库）、PHASE、LOFI、VOICE（能用西班牙语、英语和日语唱出歌词）、WHEEL、NOISE、ANIMAL（用物理模型模拟鸟、昆虫和青蛙的叫声）和 DRUM-X。没有采样：一切都是合成的。',
+    a_o:'引擎',a_h:'11 种合成引擎',a_p:'ANALOG、FM6（六算子、32 种算法、DX7 音色库）、PHASE、LOFI、VOICE（能用西班牙语、英语和日语唱出歌词）、WHEEL、NOISE、ANIMAL（用物理模型模拟鸟、昆虫和青蛙的叫声）、STRING（拨奏、敲击或弓奏的琴弦）、ADD（加法合成）和 DRUM-X。没有采样：一切都是合成的。',
     b_o:'心脏',b_h:'DRUM-X',b_p:'由八种合成声音组成的鼓组，每种声音都有两面：MORPH 可以现场把整个鼓组从一面推到另一面。每个八度都是同样的琴键：往上是连击，往下是短击、幽灵音和装饰音（flam）。',
     c_o:'神经系统',c_h:'64 步音序器',c_p:'每条音轨一个钢琴卷帘，和弦、概率、连击、额外播放头，精确到 1/64 步的离网格录音，以及每隔几小节变换声音与节奏型的 MUTATE。',
-    d_o:'细胞膜',d_h:'效果器与总线',d_p:'延迟、五种混响（SHIMMER、RESO、CLOUD…）、合唱、切片器、现场即时效果、作用于整个混音的 DJ 滤波器，以及带限幅、削波和冲击力的总线。',
+    d_o:'细胞膜',d_h:'效果器与总线',d_p:'延迟、五种混响（SHIMMER、RESO、CLOUD…）、合唱、切片器、现场即时效果、作用于整个混音的 DJ 滤波器，以及带限幅、削波、冲击力、磁带饱和和四段均衡器的总线。',
     e_o:'记忆',e_h:'歌曲与生成器',e_p:'每个工程四个段落，用 ARRANGE 页面串联，还有一个写出完整歌曲构思的生成器：按曲风，或在 EXPLORE 模式下打破所有规则。',
     f_o:'根系',f_h:'USB 音频与 MIDI',f_p:'FM-1 变成一台时间稳定的音频接口：每条音轨各占一个通道送进你的 DAW（STEMS），可分别录制每一轨。支持 USB、蓝牙和 TRS MIDI。',f_go:'独立产品：即将推出',
     nv_eb:'找到方向',nv_h2:'六条规则，一张地图',nv_in:'从 0.9.2 起，每个分区的操作方式都一样：六条规则学一次，就认识整台合成器。地图按 SELECT 走过的顺序列出每个按键的分组和页面，三种外观（AIR、COLORS、HUD）通用。',nv_cap:'导航地图 · 点击查看大图（SVG，可缩放）',
@@ -639,7 +639,7 @@ const energy=(k,t)=>reduce?.35:Math.exp(-(((t/BEAT)*DIV[k%9]/4)%1)*5);
     nat_k:'新页面 · 频率',nat_h:'自然中的频率',nat_p:'物质是光，颜色是频率：一架从太阳周期到伽马射线的阶梯，以及四个会发声的例子，说明合成器早已身在其中。',nat_go:'登上阶梯 →',f_nat:'自然中的频率',
     tm:'基于 Hügelton Instruments 的 Felucca 开发。M-VAVE 和 FM-1 是其各自所有者的商标；JIANT 与它们以及 Hügelton Instruments 均无关联，也未获其认可。'};
   const JA={live:'無料 · オープンソース · GPL-3.0',kicker:'M-VAVE FM-1 のためのファームウェア',down:'有機体の中へ',
-    lede:'FM-1 をひとつの完全な楽器に変える無料のファームウェア。6 トラック、9 つのシンセシスエンジン、奥深いシーケンサーとエフェクトが、この小さなキーボードに収まります。ブラウザから数分でインストールでき、いつでも公式ファームウェアに戻せます。',
+    lede:'FM-1 をひとつの完全な楽器に変える無料のファームウェア。6 トラック、11 のシンセシスエンジン、奥深いシーケンサーとエフェクトが、この小さなキーボードに収まります。ブラウザから数分でインストールでき、いつでも公式ファームウェアに戻せます。',
     cta_install:'FM-1 にインストール',cta_emu:'ブラウザで試す',cta_editor:'エディターを開く',ver:'現在のバージョン：',dev_cap:'HOME：トラックごとに一匹の生き物、音にあわせてふくらむ',
     s_eb:'はじめに',s_h2:'3 ステップ、プログラミング不要',s_in:'すべてブラウザで動きます。ソフトのインストールは不要で、FM-1 に触れる前に JIANT を試せます。',
     st1_h:'ブラウザで試す',st1_p:'エミュレーターが本物のファームウェアをパソコンやスマホで動かします。キーボードで弾き、曲を読み込み、すべてのエンジンを聴けます。',st1_a:'FM-1 がなくても OK',st1_b:'バックアップから曲のステムを書き出せます',st1_go:'エミュレーターを開く',
@@ -647,10 +647,10 @@ const energy=(k,t)=>reduce?.35:Math.exp(-(((t/BEAT)*DIV[k%9]/4)%1)*5);
     st3_h:'編集とバックアップ',st3_p:'Web エディターは、FM-1 が鳴り続けたまま、音色と設定をパソコンの画面に表示します。',st3_a:'DX7 のバンクを FM6 に送る、プリセットを整理する',st3_b:'すべてのプロジェクトをワンクリックでバックアップ',st3_go:'エディターを開く',
     need:'必要なもの：パソコンの Chrome または Edge（WebUSB と Web MIDI）· 充電専用ではない、データ通信できる USB ケーブル。',
     i_eb:'中身',i_h2:'ひとつの有機体、9 つの種',i_in:'エンジンはそれぞれひとつの種で、ファームウェア自身が描きます。HOME では各トラックがそのエンジンの種の生き物になり、形はノブから生まれ、自分の音でふくらみ、熱を帯びます。',zoo_k:'9 つのエンジン、FM-1 が描くとおりに',
-    a_o:'エンジン',a_h:'9 つのシンセシスエンジン',a_p:'ANALOG、FM6（6 オペレーター、32 アルゴリズム、DX7 バンク）、PHASE、LOFI、VOICE（スペイン語・英語・日本語で歌詞を歌う）、WHEEL、NOISE、ANIMAL（物理モデルによる鳥・虫・カエルの声）、DRUM-X。サンプルなし、すべてシンセシス。',
+    a_o:'エンジン',a_h:'11 のシンセシスエンジン',a_p:'ANALOG、FM6（6 オペレーター、32 アルゴリズム、DX7 バンク）、PHASE、LOFI、VOICE（スペイン語・英語・日本語で歌詞を歌う）、WHEEL、NOISE、ANIMAL（物理モデルによる鳥・虫・カエルの声）、STRING（はじく・たたく・弓でこする弦）、ADD（加算合成）、DRUM-X。サンプルなし、すべてシンセシス。',
     b_o:'心臓',b_h:'DRUM-X',b_p:'8 つの合成サウンドのドラムキット。各サウンドに A と B の 2 つの顔があり、MORPH でキット全体をライブで行き来できます。どのオクターブでも同じ鍵盤：上はラチェット、下はショート・ゴースト・フラム。',
     c_o:'神経系',c_h:'64 ステップのシーケンサー',c_p:'トラックごとのピアノロール、コード、確率、ラチェット、追加のプレイヘッド、1/64 ステップ単位でグリッドを外せる録音、そして数小節ごとに音とパターンを変える MUTATE。',
-    d_o:'膜',d_h:'エフェクトとマスター',d_p:'ディレイ、5 種類のリバーブ（SHIMMER、RESO、CLOUD…）、コーラス、スライサー、ライブのパンチインエフェクト、ミックス全体にかかる DJ フィルター、リミッター・クリップ・パンチ付きのマスター。',
+    d_o:'膜',d_h:'エフェクトとマスター',d_p:'ディレイ、5 種類のリバーブ（SHIMMER、RESO、CLOUD…）、コーラス、スライサー、ライブのパンチインエフェクト、ミックス全体にかかる DJ フィルター、リミッター・クリップ・パンチ・テープ・4 バンド EQ 付きのマスター。',
     e_o:'記憶',e_h:'ソングとジェネレーター',e_p:'プロジェクトごとに 4 つのセクション、それをつなぐ ARRANGE ページ、そして曲のアイデアを丸ごと書くジェネレーター：ジャンルから、または EXPLORE ですべてのルールを破って。',
     f_o:'根',f_h:'USB オーディオと MIDI',f_p:'FM-1 がタイミングの正確なオーディオインターフェースに。各トラックを別々のチャンネルで DAW へ（STEMS）。パートごとに別々に録音できます。USB、Bluetooth、TRS の MIDI に対応。',f_go:'別製品：近日公開',
     nv_eb:'迷わない',nv_h2:'6 つのルール、1 枚の地図',nv_in:'0.9.2 から、どのセクションも同じ操作です。6 つのルールを一度覚えれば、シンセ全体がわかります。地図は各ボタンのグループとページを SELECT がたどる順に示し、3 つのスキン（AIR、COLORS、HUD）すべてで同じです。',nv_cap:'ナビゲーションマップ · クリックで拡大（SVG、ズーム可）',
@@ -688,7 +688,7 @@ const energy=(k,t)=>reduce?.35:Math.exp(-(((t/BEAT)*DIV[k%9]/4)%1)*5);
   set(l);
   /* the version the installer offers now (firmware/versions.json, next to this page on the site) */
   fetch('firmware/versions.json',{cache:'no-cache'}).then(r=>r.ok?r.json():null).then(v=>{
-    if(Array.isArray(v)&&v[0]&&v[0].version)document.getElementById('ver').textContent='v'+String(v[0].version).replace(/^v/,'').split('-')[0];
+    if(Array.isArray(v)&&v[0]&&v[0].version)document.getElementById('ver').textContent='v'+String(v[0].version).replace(/^v/,'');
   }).catch(()=>{});
 })();
 </script>

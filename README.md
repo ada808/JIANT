@@ -19,37 +19,54 @@ editor update themselves with every change merged into `main`.
 
 | Where | Version |
 |---|---|
-| **Public installer** (stable) | **0.9.9-beta4a** |
-| **Beta installer and emulator** | **0.9.9-seq2b** (beta4a + the new SEQ pages) |
-| Earlier versions the public installer also offers | 0.9.17, 0.9.14, 0.9.9, 0.8.9, 0.7.9, 0.6.82, 0.6.2, 0.5.5 |
+| **Public installer** (stable) | **0.9.9-par9** |
+| **Beta installer and emulator** | **0.9.9-par9** |
+| Earlier versions the public installer also offers | 0.9.9-par8, 0.9.9-gen2 (*ULTRA STABLE*), 0.9.9-par6, 0.9.9-par5, 0.9.17, 0.9.14, 0.9.9, 0.8.9 … |
 
 [Public installer](https://juanjiant-bit.github.io/JIANT/webapp/installer/) · [Beta installer](https://juanjiant-bit.github.io/JIANT/preview/webapp/installer/) · [Emulator](https://juanjiant-bit.github.io/JIANT/emu/)
 
-`main` is the **0.9.18 development line**, which this README also describes. Both installed versions descend from 0.9.9, not
-from 0.9.18: features marked *"in the 0.9.1x line"* below (0.9.10 to 0.9.18; 0.9.17 is the newest one in the installer's
-list of earlier versions) are **not** in 0.9.9-beta4a or 0.9.9-seq2b.
+The installed line is **0.9.9-par**: 0.9.9's stable core with the new sequencer (seq2), the song generator rebuilt
+(gen), two new engines (snd) and 0.9.18's live features ported over (par). `main` also holds the 0.9.18 development
+line, which parts of the text below describe; features marked *"in the 0.9.1x line"* that par has not taken yet are
+not in the installer's version. If a version gives you trouble, **0.9.9-gen2** in the list of earlier versions is the
+one to go back to.
 
-## What's new in 0.9.9-beta4a / seq2
+## What's new in 0.9.9-par9
+
+**Sound**
+- **Master EQ, 4 bands** (FX › EQ, after TAPE): LOW, LO MID, HI MID, HIGH, −12 … +12 dB each, wide and gentle
+  (~200 Hz, 1 kHz, 4 kHz). At 0 dB it is bit for bit transparent and costs nothing. Saved with the project.
+- **TAPE** on the master (FX › TAPE: TAPE, WOW): saturation, darker highs, a low bump, wow and flutter; much stronger
+  at 100 since par9.
+- **STRING**: a Karplus-Strong string (EXCITE NOISE / PLUCK / PICK / HAMMR / STICK, POS, STRETCH, BODY, SIZE, BOW).
+  RELEASE is its damper: it rings past the step and dies out when let go. NYLON, STEEL GTR, HARP, KOTO, PIANO, MARIMBA, BOWED…
+- **ADD**: additive synthesis, ten spectra (HARM ODD WIDE BELL BAR DRUM PRIME FIFTH SUB PLATE) with MORPH, PARTIAL,
+  SHIFT, COMB, DECAY and MOTION. Presets PRIME ORG, QUINT, DRONE, GONG, TOTEM…
+- **LOFI BYTE / FLOAT**: 48 formulas each (ALGO 0–191). MOTION past half is **SYNC**: the formula follows the bar,
+  so a note only transposes it and never changes its speed.
+- FILTER TYPE MS20 and COMB−, the delay's DRIVE, DRUM-X GLUE, LFO MODE TRIG / FREE.
+
+**Performance**
+- **GLO › LIVE**: the six sequences in parallel with live modifiers (MANO: the keys as a performance board; RIELES:
+  six rails, each loop with its rate and length). Never destructive.
+- **FX layer**: LOOP 3 / 5 / 7 and **GLITCH**; since par9 GLITCH skips on the 1/16 grid with its cycle locked to the
+  bar. G5 clears the punch-in lane's automation.
+- **Live REC** places a note where you heard it (the output's latency taken into account on the FM-1).
+- **MIDI LEARN** with MIDI MAP FACTORY / CUSTOM ADD / CUSTOM; GLO › SYSTEM 2 shows MIDI IN at a glance.
+
+**Generator (GEN, HOME + SELECT)**
+- Rebuilt by role and by genre, tuned on the owner's references: drums in front, leads under the bass, EXPLORE
+  calmer, TECHNO minimal 4×4, EBM at 92–104 BPM with six riffs and four basses that vary, DARKWAVE and ITALO a chord
+  every 2 bars, slow filter sweeps on bass and pads.
+- SEQ + SELECT dices a part with the same generator, on the song's harmony, never near its last 8 dicings.
+
+**Sequencer (seq2)**
+- One shared piano roll on every SEQ page; the chain **STEP · LENGTH/TRACK · MUTATE · PLAYHEADS · STRETCH · COMP · AUTO**;
+  step components v2 (ACTION LENGTH CONDITION VALUE, two a step); COPY / PASTE; the footer's 16 steps.
 
 **Stability**
-- The core supplies are raised to M-VAVE's V15 levels at boot (VDC14 1.60 V, SYSVDD 1.38 V).
-- MENU > SYSTEM > CPU CLOCK 360 / 320 MHz (360 stays the default).
-- The second core is parked, and the cache idled, before the flash is written.
-- The audio path's 64-bit multiplies are out of line (they faulted beside 16-bit loads); the sound is bit for bit the same.
-- A write guard keeps core 1 and the DMA out of core 0's code and stacks, and the crash screen says more (see below).
-
-**Polyphony and CPU**
-- An averaged overload guard replaces the spike-driven budget; a note's start predicts the load and gives up a released voice past the budget.
-- The effect buses go to rest when silent, and more proven-empty work is skipped.
-- Control rate 64: the control block is 64 samples and notes start at their sample inside it.
-- FM6's released notes end sooner; the delay, reverb and chorus code runs from RAM.
-- The screen is held under load: past 60 % of the render it redraws every 50 ms and keeps animating.
-- Measured on the owner's unit: six tracks without glitches at about 45 % CPU, and the resting floor down from 18 % to 14 %.
-
-**seq2 (beta installer and emulator only, 0.9.9-seq2b)**
-- The footer's bar squares on every page (a square a bar, the sounding one lit, the cursor's outlined).
-- The new SEQ chain: **STEP · LENGTH/TRACK · MUTATE · PLAYHEADS · STRETCH · COMP · AUTO**.
-- One shared piano roll on every SEQ page, with the keys at its left and a coloured line per playhead.
+- Both cores by default (MENU › SYSTEM › CPU CORES); a crash no longer switches the FM-1 to one core for good.
+- The core supplies at M-VAVE's V15 levels, CPU CLOCK 360 / 320 MHz, the averaged overload guard, control rate 64.
 
 ## Reporting a crash
 
@@ -167,7 +184,7 @@ Two printable sheets with everything on the device. Click an image to open it fu
 | Controls | Sound · FX · Mod |
 | --- | --- |
 | [![JIANT FM cheat sheet: controls](docs/cheatsheet-controls.png)](docs/cheatsheet-controls.png) | [![JIANT FM cheat sheet: sound, effects and modulation](docs/cheatsheet-sound.png)](docs/cheatsheet-sound.png) |
-| Every knob and button, the layers with their key maps (FX, GLO, SAVE, EDIT, LFO, SCL, SEQ, REC), the combos and every page's four knobs. **[PDF](docs/cheatsheet-controls.pdf)** | The nine engines' EDIT pages, FILTER, VOICE, ENV, LFO, the MOD matrix, MSEQ, macros, the sequencer, scales and ARP, songs, and every effect: DIST, the SLICER bus, delay, the five reverbs and the master. **[PDF](docs/cheatsheet-sound.pdf)** |
+| Every knob and button, the layers with their key maps (FX, GLO, SAVE, EDIT, LFO, SCL, SEQ, REC), the combos and every page's four knobs. **[PDF](docs/cheatsheet-controls.pdf)** | The eleven engines' EDIT pages (STRING and ADD included), FILTER, VOICE, ENV, LFO, the MOD matrix, MSEQ, macros, the sequencer, scales and ARP, songs, and every effect: DIST, the SLICER bus, delay, the five reverbs, the master, TAPE and the 4-band EQ. **[PDF](docs/cheatsheet-sound.pdf)** |
 
 ## The idea
 
@@ -270,8 +287,8 @@ VOICE singing its lyric, in the COLORS skin, exactly as the firmware draws them 
   up whole).
 
 ### Engines
-Nine engines, all synthesis, no samples: **DRUM (DRUM-X), VOICE, ANIMAL, LOFI, ANALOG, FM6, PHASE, WHEEL and NOISE**,
-in the order PRESETS shows them (0.9.9; the first six are the tracks at power-on, T1–T6).
+Eleven engines, all synthesis, no samples: **DRUM (DRUM-X), VOICE, ANIMAL, LOFI, ANALOG, FM6, PHASE, WHEEL, NOISE,
+STRING and ADD**, in the order PRESETS shows them (0.9.9-par; the first six are the tracks at power-on, T1–T6).
 - **ANALOG**: two oscillators with **INT** (an interval of ±24 semitones: fifths, octaves) and DTN; besides SAW, SQR,
   TRI, SIN and PWM it has **SYNC**, **RING** and **SAW3** (three saws). Its filter is per voice.
 - **FM6**: Dexed's engine (imports .syx), with its algorithms drawn. Fully editable on the device (from Felucca 1.5):
@@ -289,7 +306,15 @@ in the order PRESETS shows them (0.9.9; the first six are the tracks at power-on
 - **LOFI**: 1, 4 and 8-bit chip with **BYTE** (bytebeat: 32 formulas picked with ALGO and mutated with VAR). In
   BYTE, **MOTN** sets the speed of the formula's rhythm, **GRIT** crushes its rate, **BEND** folds time and **LOOP**
   repeats a short stretch of the formula: the noise becomes a tone tuned to the note. **FLOAT** is a floatbeat
-  generator: 32 formulas of `t` made of sines (rhythm, melody and timbre at once), in the key played.
+  generator: 32 formulas of `t` made of sines (rhythm, melody and timbre at once), in the key played. **0.9.9-par6**:
+  48 formulas each (ALGO 0–191), and MOTN past half is **SYNC**: the formula's rhythm follows the bar, so a note only
+  transposes it.
+- **STRING** (0.9.9-snd5): a Karplus-Strong string. EXCITE (NOISE, PLUCK, PICK, HAMMR, STICK), DECAY, BRIGHT, POS (where
+  it is struck); BODY page: STRETCH (a stiff, metallic string), BODY, SIZE and **BOW** (a bow's noise fed into the loop).
+  RELEASE is its damper: the string rings past the step and dies out when let go.
+- **ADD** (0.9.9-snd5): additive. MODE picks the spectrum (HARM ODD WIDE BELL BAR DRUM PRIME FIFTH SUB PLATE), MORPH
+  moves between spectra, BRIGHT and PARTIAL how many partials, SHIFT stretches them, COMB carves notches, DECAY lets
+  the highs die first and MOTION sweeps the spectrum.
 - **VOICE** (formants, after klattsch), **WHEEL** (drawbar organ) and **NOISE** (coloured and metallic noise).
   **VOICE sings words** (0.8.5): LANG ES / EN / JA, each note the next syllable of a lyric you type (on the device or
   from the web editor) or of phrases the dice puts together from each language's word bank; POS and LOOP automate it.

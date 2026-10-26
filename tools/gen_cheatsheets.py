@@ -8,7 +8,7 @@ import html, os
 
 R = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 OUT = os.path.join(R, 'docs', 'cheatsheet')
-VERSION = 'v0.9.12'
+VERSION = 'v0.9.9-par9'
 
 HEAT = ['#22d3ee', '#3b82f6', '#8b5cf6', '#d946ef', '#ef4444', '#ff7a00', '#facc15', '#f4f1ea']
 
@@ -162,9 +162,9 @@ def controls():
         ('HOME', 'ECO: ECO · MACROS  |  BEING: BEING · ROUTES  |  GEN: GEN 1 · GEN 2 · GEN 3', 'MENU'),
         ('EDIT', 'SOUND: EDIT 1 · EDIT 2  |  TONE: FILTER · MORPH · RETRIG · ROTOR · VOICE · VOICE 2 · WORDS  |  FOCUS (FM6: … OPERATOR: OPERATOR · OP ENV · OPERATOR 2; DRUM: KIT: KIT · KIT 2 · KIT 3  |  SOUND: SOUND 1–4  |  LEVELS 1–2  |  TONE: X-MOD · FILTER · STEREO · VOICE)', 'INIT · RECALL · sound mutes'),
         ('SEQ', 'PATTERN: PATTERN · STRETCH · PLAYHEADS  |  TRACK: TRACK · MUTATE  |  BAR: BAR · STEP · NOTE  |  STEP: COMP · COMP 2  |  AUTO: AUTOMATION · AUTO LIST', 'SEQ TOOLS'),
-        ('FX', 'TRACK: SENDS · DIST · AUTO PAN  |  BUSES  |  DELAY: DLY 1–3  |  REVERB 1–2  |  CHORUS  |  SLICER: SLICER · SL BUS 1–2 · SL PITCH  |  MASTER  |  PUNCH',
+        ('FX', 'TRACK: SENDS · DIST · AUTO PAN  |  BUSES  |  DELAY: DLY 1–3  |  REVERB 1–2  |  CHORUS  |  SLICER: SLICER · SL BUS 1–2 · SL PITCH  |  PUNCH  |  MASTER · TAPE · EQ',
          'PUNCH-IN FX'),
-        ('GLO', 'LIVE: MANO · RIELES  |  MIX: MIXER · SENDS  |  GLOBAL  |  SYSTEM (at power-on GLO opens MIXER)', 'MUTE · SOLO · LEVEL · TAP'),
+        ('GLO', 'LIVE: MANO · RIELES  |  MIX: MIXER · SENDS  |  GLOBAL  |  SYSTEM  |  COMPS (at power-on GLO opens MIXER)', 'MUTE · SOLO · LEVEL · TAP'),
         ('ENV', 'TRACKS: TRACKS · TRACKS DEST  |  ENV: ENV · ENV DEST  |  STAGE', '—'),
         ('LFO', 'MOD  |  LFO: LFO · LFO DEST  |  MSEQ: MSEQ · MSEQ 2', 'MACROS M1–M4 (stay latched)'),
         ('SCL', 'KEY  |  CHORD', 'ROOT by key'),
@@ -181,11 +181,11 @@ def controls():
                   ' walks every page of the section.</p>') + '</div>')
 
     b.append(sec('LAYERS · HOLD A BUTTON'))
-    fx_w = {'F3': 'REP 1/8', 'G3': 'REP 1/16', 'A3': 'REP 1/32', 'B3': 'GLITCH', 'C4': 'TAPE', 'D4': 'OCT−', 'E4': 'OCT+',
+    fx_w = {'F3': 'REP 1/8', 'G3': 'REP 1/16', 'A3': 'REP 1/32', 'B3': 'LPF', 'C4': 'HPF', 'D4': 'OCT−', 'E4': 'OCT+',
             'F4': '½ TEMPO', 'G4': 'DEC−', 'A4': 'DEC+', 'B4': 'STUT 1/8', 'C5': 'STUT 1/16', 'D5': 'ATK+', 'E5': 'ARP',
-            'F5': 'RAND', 'G5': 'ERASE'}
-    fx_b = {'F#3': 'M1', 'G#3': 'M2', 'A#3': 'M3', 'C#4': 'M4', 'D#4': 'M5', 'F#4': 'M6', 'A#4': 'TGT', 'C#5': 'FILT',
-            'D#5': 'CRSH', 'F#5': 'THRW'}
+            'F5': 'RAND', 'G5': 'CLR AUTO'}
+    fx_b = {'F#3': 'M1', 'G#3': 'M2', 'A#3': 'M3', 'C#4': 'M4', 'D#4': 'M5', 'F#4': 'M6', 'G#4': 'LOOP 3', 'A#4': 'TGT',
+            'C#5': 'LOOP 5', 'D#5': 'LOOP 7', 'F#5': 'GLITCH'}
     glo_w = {'F3': 'SOLO 1', 'G3': 'SOLO 2', 'A3': 'SOLO 3', 'B3': 'SOLO 4', 'C4': 'SOLO 5', 'D4': 'SOLO 6',
              'E4': 'ALL', 'F4': 'TAP', 'G4': 'UNDO', 'A4': 'FRZ', 'B4': 'RVRT ALL'}
     glo_b = {'F#3': 'M1', 'G#3': 'M2', 'A#3': 'M3', 'C#4': 'M4', 'D#4': 'M5', 'F#4': 'M6', 'G#4': 'KICK',
@@ -198,10 +198,9 @@ def controls():
     b.append(card('FX · PUNCH-IN EFFECTS', HEAT[5], keyboard(fx_w, fx_b) +
                   '<p>A key plays its effect while held (MENU FX LATCH ON: toggles); hold FX and let go untouched: <b>LOCKED</b> '
                   'open, FX again unlocks; OCT- all off. In on the next 1/16. Black 1–6 mute T1–T6, A#4 picks which tracks the MIDI ones '
-                  'touch (all · synths · drums); C#5 D#5 F#5 sweep FILTER, CRUSH, THROW dry to wet over 2 bars (back in a beat). '
-                  'With REC armed and playing they record into the section\'s lane; G5 erases it.</p>'
-                  '<h4>KNOBS · PERFORMANCE MACROS</h4>' + knobs('STEPS', 'TRANSP', 'MUTATE', 'FILTER') +
-                  '<p>Up to the right; turn any back: all four off at once.</p>'))
+                  'touch (all · synths · drums). G#4 C#5 D#5 loop the last 3 / 5 / 7 steps; F#5 <b>GLITCH</b> skips on the 1/16 grid, its cycle '
+                  'locked to the bar (par9). With REC armed and playing they record into the section\'s lane; G5 '
+                  'clears it.</p><h4>KNOBS</h4>' + knobs('FILTER', 'CRUSH', 'THROW', 'DEPTH')))
     b.append(card('GLO · MIX', HEAT[1], keyboard(glo_w, glo_b) +
                   '<p>Black 1–6 mute T1–T6 (latched), 7–10 the DRUM-X groups. White: solo while held, E4 unmutes all, '
                   'F4 tap tempo, G4 <b>UNDO</b> the last big change (again: redo), A4 <b>FREEZE</b> MUTATE, B4 <b>REVERT ALL</b> (every track back to MUTATE\'s anchor). SELECT: the tempo. PLAY: restart.</p><h4>KNOBS</h4>' +
@@ -240,8 +239,8 @@ def controls():
         (k('SAVE') + ' + ' + k('OCT+') + ' / ' + k('OCT−'), 'Store / recall the playing section.'),
         (k('GLO') + ' + ' + k('PLAY'), 'Restart from the top.'),
         (k('GLO') + ' + ' + k('SELECT'), 'Tempo (from any page).'),
-        (k('STEP HELD', cls='a') + ' + ' + k('KNOB'), 'A parameter lock on that step (roll, grid); + ' + k('SELECT', cls='v') + ' the EDIT page they lock; + ' + k('EDIT') + ' clears its locks.'),
-        (k('HOME', cls='a') + ' held', 'MENU: skins (AIR · COLORS · HUD), SCOPE on the EDIT pages, palettes, knob accel, FX latch, hold time, USB level, MIDI (MIDI OUT, MIDI LEARN), CPU (2 / 1 cores, 360 / 320 MHz), animation…'),
+        (k('STEP HELD', cls='a') + ' + ' + k('KNOB'), 'A parameter lock on that step (roll, grid).'),
+        (k('HOME', cls='a') + ' held', 'MENU: skins (AIR · COLORS · BOTTOM · HUD), SCOPE on the EDIT pages, palettes, knob accel, FX latch, hold time, USB level, animation…'),
     ]
     t3 = '<table>' + ''.join(f'<tr><td style="white-space:nowrap;width:1%;padding-right:18px">{a}</td><td>{d}</td></tr>'
                              for a, d in combos) + '</table>'
@@ -256,7 +255,8 @@ def controls():
                          ('SL BUS', 'T1 T2 T3 T4'), ('SL BUS 2', 'T5 T6 FX -'), ('SL PITCH', 'STEP PITCH LEN QUANT'),
                          ('DLY', 'TIME FEEDBK TONE MIX'), ('DLY 2', 'WIDE PITCH SPRAY MOD'), ('DLY 3', 'TYPE PING - -'),
                          ('REVERB', 'TYPE SIZE DAMP PRE/AIR'), ('REVERB 2', 'MOD RATE FILT WIDE'),
-                         ('CHORUS', 'RATE DEPTH STEREO -'), ('MASTER', 'CLIP PUNCH DUCK REL'), ('PUNCH', 'LEN RES REC CLEAR')]),
+                         ('CHORUS', 'RATE DEPTH STEREO -'), ('PUNCH', 'LEN RES REC CLEAR'), ('MASTER', 'CLIP PUNCH DUCK REL'), ('TAPE', 'TAPE WOW - -'),
+                         ('EQ', 'LOW LO MID HI MID HIGH')]),
         ('EDIT', HEAT[3], [('EDIT 1', 'E1 E2 E3 E4'), ('EDIT 2', 'E5 E6 E7 E8'), ('WORDS', 'LANG LYRIC POS (OCT+ TYPE)'), ('RETRIG', 'RTRG - - -'), ('OPERATOR', 'OP RATIO FINE LEVEL'),
                            ('OP ENV', 'OP STAGE RATE LEVEL'), ('OPERATOR 2', 'OP MODE DETUNE VEL'), ('FILTER', 'TYPE CUT RES DRIVE'),
                            ('VOICE', 'VOICE GLIDE MODE PRIO'), ('VOICE 2', 'ALLOC DETUNE - -'), ('FOCUS', 'PARAM VALUE SRC AMT'), ('KIT 3', 'BP FEEDBK HANDS -'),
@@ -273,7 +273,7 @@ def controls():
                           ('COMP', 'STEP TYPE VAL EVERY'), ('COMP 2', 'STEP TYPE VAL EVERY')]),
         ('GLO · SAVE', HEAT[6], [('MANO', 'RATE LOOP THIN DJ FILT (the keys: live modifiers)'), ('RIELES', 'PISTAS RATE CORTE DENS'),
                                  ('MIXER', 'LEVEL PAN REV DJ FILT'), ('GLOBAL', 'BPM SWING CLOCK TUNE'),
-                                 ('SYSTEM', 'TRACKS LOAD ROUTE CPU'), ('PRESETS', 'No. ENG FAV LIST (ALL FAV BASS … FX)'),
+                                 ('SYSTEM', 'TRACKS LOAD ROUTE CPU'), ('PRESETS', 'No. ENG FAV LIST'),
                                  ('USER', 'SLOT LOAD ERASE SAVE'), ('PROJECTS', 'PROJECT SECT LOAD SAVE'), ('SECTIONS', 'SECT NAME LOAD SAVE'), ('ARRANGE', 'ROW SECT BARS SCENE (OCT+ adds a row)'),
                                  ('TOOLS', 'CLEAR SEQ · INIT SOUND · DEL ROW · CLEAR SONG · NEW PROJECT · CPU TEST: K1 picks, OCT+')]),
     ]
@@ -314,7 +314,16 @@ def sound():
         ('LOFI', HEAT[0], 'CHIP WAVE DUTY CRUSH', '- VIB BEND MASK',
          'Chip: PLS TRI SAW NOIS WRAM. <b>BYTE</b>: ALGO VAR · MOTN GRIT BEND LOOP. <b>FLOAT</b> (floatbeat): '
          'ALGO VAR · MOTN FBK BEND LOOP; CHIP sets FULL / 4BIT / 1BIT. <b>Its picture</b> (0.9.6): a caterpillar whose skin '
-         'is the output, a segment per bit of the byte.'),
+         'is the output, a segment per bit of the byte. <b>par9</b>: 48 formulas each in BYTE and FLOAT (ALGO 0–191); MOTN past '
+         'half is <b>SYNC</b>: the formula\'s slow bits follow the bar, so a note only transposes it, never changes its speed.'),
+        ('STRING', HEAT[3], 'EXCITE DECAY BRIGHT POS', 'STRETCH BODY SIZE BOW',
+         'Karplus-Strong string (snd5): EXCITE NOISE PLUCK PICK HAMMR STICK; POS where it is struck, STRETCH a stiff, '
+         'metallic string, BODY / SIZE its box, <b>BOW</b> a bow\'s noise into the loop. RELEASE is its damper: the string '
+         'rings after the step and dies out when let go. NYLON, STEEL GTR, HARP, KOTO, PIANO, MARIMBA, BOWED…'),
+        ('ADD', HEAT[1], 'MODE MORPH BRIGHT PARTIAL', 'SHIFT COMB DECAY MOTION',
+         'Additive (snd5): partials by MODE HARM ODD WIDE BELL BAR DRUM <b>PRIME FIFTH SUB PLATE</b> (par6); MORPH between '
+         'spectra, PARTIAL how many, SHIFT stretches them, COMB carves notches, DECAY the highs die first, MOTION sweeps '
+         'the spectrum. Presets PRIME ORG, QUINT, DRONE, GONG, TOTEM…'),
         ('VOICE', HEAT[6], 'VOWEL VOWEL2 TALK SHIFT', 'BUZZ BREATH Q RAND',
          'Formant voice (after klattsch): vowels, talk, breath. <b>WORDS</b> (0.8.5): LANG ES / EN / JA sings syllables, '
          'a note each (POS THEME ARTIC SHIFT · BUZZ BREATH Q LOOP); LYRIC TEXT (OCT+ on WORDS types it, KNOB 3 dice; '
@@ -336,14 +345,14 @@ def sound():
          'GROUP: syllables + gaps; TEMP °C speeds a cricket up (Dolbear). A note is a call. <b>Its picture</b> (0.9.4): '
          'bird ↔ insect ↔ mammal by MODE, leaned by SIZE.'),
     ]
-    ORDER = ['DRUM-X', 'VOICE', 'ANIMAL', 'LOFI', 'ANALOG', 'FM6', 'PHASE', 'WHEEL', 'NOISE']   # (0.9.9) the device's order
+    ORDER = ['DRUM-X', 'VOICE', 'ANIMAL', 'LOFI', 'ANALOG', 'FM6', 'PHASE', 'WHEEL', 'NOISE', 'STRING', 'ADD']   # (0.9.9-snd5) the device's order
     eng.sort(key=lambda r: ORDER.index(r[0]))                     # (src/engines.c ENGINE_ORDER: PRESETS, KNOB 2 ENG)
     t = '<table><tr><th>ENGINE</th><th>EDIT 1</th><th>EDIT 2</th><th>WHAT TO KNOW</th></tr>'
     for n, c, e1, e2, d in eng:
         t += (f'<tr><td class="n" style="--c:{c}">{e(n)}</td><td style="width:22%">{knobs(*e1.split())}</td>'
               f'<td style="width:22%">{knobs(*e2.split())}</td><td>{d}</td></tr>')
     t += '</table>'
-    b.append(card('NINE ENGINES, ALL SYNTHESIS', HEAT[7], t))
+    b.append(card('ELEVEN ENGINES, ALL SYNTHESIS', HEAT[7], t))
     b.append('<div class="grid g3" style="margin-top:22px">')
     b.append(card('FILTER · EVERY ENGINE', HEAT[3], knobs('TYPE', 'CUT', 'RES', 'DRV') +
                   '<p style="margin-top:8px"><b>LP · HP · BP · COMB</b>. COMB rings tuned to the note: CUT moves it '
@@ -435,8 +444,13 @@ def sound():
                   '<p style="margin-top:8px"><b>CLIP</b> saturates without getting louder. <b>PNCH</b> drives the drums: '
                   'denser body. <b>DUCK</b>: the kick pulls the rest down (REL its release). An always-on '
                   '<b>leveler</b> (slow 2:1, −9…+6 dB) before the limiter keeps patches at a steady volume.</p>'
-                  '<h4>PUNCH-IN FX (FX HELD)</h4><p>REPEAT 1/8 · 1/16 · 1/32, GLITCH, TAPE STOP; on the notes: OCT−/+, ½ TEMPO, '
-                  'DEC−/+, STUTTER, ATK+, ARP, RANDOM; sweeps FILTER CRUSH THROW. Knobs: STEPS TRANSPOSE MUTATE FILTER. '
+                  '<h4>TAPE</h4>' + knobs('TAPE', 'WOW', '-', '-') +
+                  '<p style="margin-top:6px">After MASTER: TAPE saturates, darkens the highs and lifts the lows; WOW the '
+                  'wow and flutter (par9: much stronger at 100).</p>'
+                  '<h4>EQ · 4 BANDS (par9)</h4>' + knobs('LOW', 'LO MID', 'HI MID', 'HIGH') +
+                  '<p style="margin-top:6px">−12…+12 dB, wide and gentle (~200 Hz, 1 kHz, 4 kHz); at 0 it costs nothing.</p>'
+                  '<h4>PUNCH-IN FX (FX HELD)</h4><p>REPEAT 1/8 · 1/16 · 1/32, LPF, HPF, LOOP 3 / 5 / 7, GLITCH on the grid; '
+                  'on the notes: OCT−/+, ½ TEMPO, DEC−/+, STUTTER, ATK+, ARP, RANDOM. Knobs: FILTER CRUSH THROW DEPTH. '
                   'Recordable per section.</p>'))
     b.append('</div>')
     page('SOUND · FX · MOD', 'engines, effects, modulation, sequencer and songs', ''.join(b), 'sound.html')
