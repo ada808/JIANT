@@ -1723,10 +1723,10 @@ static void setup(int s)
     case S_V6_STRING_BOW: v6_scene(ENGI_STRING, "BOWED", "EDIT 2", 0, 55, 900, 9); break;
     case S_V6_STRING_HOME: v6_scene(ENGI_STRING, "HARP", 0, 0, 60, 300, 9); break;
     case S_V6_STRING_FULL: v6_scene(ENGI_STRING, "PIANO", "EDIT 1", 0, 48, 120, 9); ui_scope = 0; break;
-    case S_V6_ADD: v6_scene(ENGI_ADD, "ADD ORGAN", "EDIT 1", 0, 48, 300, 10); break;   /* (0.9.9-snd5) MEDUSA */
-    case S_V6_ADD_BELL: v6_scene(ENGI_ADD, "BELL", "EDIT 2", 0, 60, 120, 10); break;
-    case S_V6_ADD_HOME: v6_scene(ENGI_ADD, "VOWEL AH", 0, 0, 55, 300, 10); break;
-    case S_V6_ADD_FULL: v6_scene(ENGI_ADD, "GLASS", "EDIT 1", 0, 60, 200, 10); ui_scope = 0; break;
+    case S_V6_ADD: v6_scene(ENGI_STRING, "FEEDBACK", "EDIT 2", 0, 48, 300, 10); break;   /* (par11: ADD retired; STRING FDBK's amp page) */
+    case S_V6_ADD_BELL: v6_scene(ENGI_STRING, "SHOEGAZE", "EDIT 2", 0, 60, 120, 10); break;
+    case S_V6_ADD_HOME: v6_scene(ENGI_STRING, "SQUEAL", 0, 0, 55, 300, 10); break;
+    case S_V6_ADD_FULL: v6_scene(ENGI_STRING, "EBOW", "EDIT 1", 0, 60, 200, 10); ui_scope = 0; break;
     case S_V6_VOICE_FULL: vx_phon(PH_E, 6000); ui_scope = 0; break;            /* (0.9.7) SCOPE OFF: VOICE's head, ANIMAL's */
     case S_V6_ANIMAL_FULL: vx_animal_scene("CANARY", -1); ui_scope = 0; break;
     case S_VX_TRACT_A_FULL: vx_sing(PH_M, 6, PH_A, 4, 7000, 1, 0); break;   /* (main 0.9.9) an open vowel, a nasal */

@@ -140,7 +140,8 @@ static void string_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
     int32_t br = clamp(p[P_E2] + ((m->shape - (64 << 8)) >> 8), 0, 127), a = 5000 + br * 218;
     int32_t s15 = clamp(p[P_E4], 0, 127) * 193, comp, dly, di, fr, g, pk = 0;
     if (fb) {                                            /* (p10) FDBK: the BODY page is the amp's */
-        bl = v->gate ? bl + (8192 >> (clamp(p[P_E7], 0, 127) / 12)) : bl - (bl >> 3);   /* BLOOM: 6 ms .. 6 s up */
+        bl = v->gate ? bl + (8192 >> (clamp(p[P_E7] - v->vel / 4, 0, 127) / 12)) : bl - (bl >> 3);   /* BLOOM: 6 ms .. 6 s up
+                                                         * (par11: a harder hit blooms sooner) */
         bl = clamp(bl, 0, 32767);
         fk = (clamp(p[P_E4], 0, 127) * (bl >> 7)) >> 2;    /* GAIN x the bloom (Q15 / 4: a quarter at most a pass) */
         fdr = 256 + clamp(p[P_E5], 0, 127) * 24;           /* DIST: x1 .. x13 into the clip */
@@ -154,7 +155,9 @@ static void string_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
         dly = 2 << 8;
     di = dly >> 8;
     fr = dly & 255;
-    ft = 1u + (((uint32_t)di * (12u + 2u * (uint32_t)clamp(p[P_E6], 0, 127))) >> 8);   /* SPEAKR: 0.05 .. 1 period back */
+    ft = 1u + (((uint32_t)di * (12u + 2u * (uint32_t)clamp(p[P_E6] + (fb ? (m->shape - (64 << 8)) >> 8 : 0), 0, 127))) >> 8);
+    /* SPEAKR: 0.05 .. 1 period back; (par11) LFO / ENV -> SHAPE move it too: the guitar walked to and from the amp, the
+     * feedback jumping from harmonic to harmonic */
     if (ft > ST_SL - 2u)
         ft = ST_SL - 2u;
     g = str_gain(per << d, p[P_E1]);
@@ -249,6 +252,8 @@ static const preset_t STRING_PRESETS[] = {
     {"METAL STR", {SX_NOISE, 100, 120, 10, 112, 0, 0, 0}, {0, 64, 127, 104}, 0, TAG(PLUCK), FX(0, 0, 20, 45), PAT(3)},
     {"FEEDBACK", {SX_FDBK, 90, 70, 24, 60, 70, 40, 60}, {0, 64, 127, 90}, 0, TAG(LEAD), FX(30, 0, 20, 35), PAT(5)},
     {"SHOEGAZE", {SX_FDBK, 110, 50, 30, 55, 100, 90, 70}, {0, 64, 127, 112}, 0, TAG(PAD), FX(20, 30, 30, 70), PAT(5)},
+    {"SQUEAL", {SX_FDBK, 80, 96, 16, 70, 110, 12, 30}, {0, 64, 127, 80}, 0, TAG(LEAD), FX(40, 0, 25, 30), PAT(4)},
+    {"EBOW", {SX_FDBK, 127, 44, 40, 50, 20, 64, 90}, {20, 64, 127, 100}, 0, TAG(LEAD), FX(0, 20, 20, 50), PAT(5)},
 };
 
 static const engine_t ENG_STRING = {

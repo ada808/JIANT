@@ -1870,58 +1870,6 @@ static __attribute__((noinline)) int32_t vx_lg2(uint32_t r)   /* (noinline: inli
     while ((r >> m) > 1u) m++;
     return (int32_t)(m << 8) + (int32_t)(((r - (1u << m)) << 8) >> m) - 2560;
 }
-/* TOTEM: nine rings stacked, each a partial at its frequency's height (the low ones at the bottom), as wide as it sounds,
- * a bead orbiting it at its speed; BRIGHT makes it a pyramid or a top, PARTIAL's cut ones dots, COMB a waist, SHIMMER a
- * wobble; the face on top */
-static VX_CODE void vx_add(const track_t *t, const int32_t *A, int32_t en_home)
-{
-    const int16_t *p = t->p;
-    vxf_t f = vx_uf(A, 85, 0);
-    uint32_t mode = (uint32_t)p[P_E0] % AD_N, age = vx_age(t, VX_K_ADD, 0), mt = vxs.mt[VX_K_ADD], i, k;
-    int32_t en = vx_level(t, VX_K_ADD, en_home), g[DRW_NP], ys[DRW_NP], gmax = 1, top = 48 * 16, sh = clamp(p[P_E4], -64, 63);
-    int32_t np = 256 + clamp(p[P_E3], 0, 127) * 2048 / 127, mot = clamp(p[P_E7], 0, 63), comb = clamp(p[P_E5], 0, 127), fy;
-    vxs.kc = 1;
-    for (k = 0; k < DRW_NP; k++) {                       /* each partial's gain now, the voices' summed */
-        g[k] = 0;
-        for (i = 0; i < NVOICE; i++)
-            if (t->v[i].active) g[k] += drw_v[drw_part(t)][i].gp[k];
-        if (g[k] > gmax) gmax = g[k];
-    }
-    if (gmax <= 1)                                       /* (silent: the tilt at rest, narrow) */
-        for (k = 0; k < DRW_NP; k++) {
-            g[k] = (int32_t)(str_exp2n((uint32_t)((127 - clamp(p[P_E2], 0, 127)) * 4 * ADD_LOG2[k]) >> 8) >> 2);
-            gmax = 3 * 65536;
-        }
-    vx_line(&f, 0, 48 * 16, 0, -38 * 16, 40);           /* the pole */
-    for (k = 0; k < DRW_NP; k++) {
-        int32_t R = ADD_RATIO[mode][k], r = R + (ADD_RATIO[(mode + 1u) % AD_N][k] - R) * clamp(p[P_E1], 0, 127) / 127;
-        int32_t y, w, h, wob, x;
-        uint32_t a;
-        if (sh < 0) r += ((r * ((r - 1024) >> 4)) >> 10) * -sh * 9 >> 8;   /* SHIFT: stretched, or every partial up */
-        else r += sh * 1331 / 63;
-        y = vx_lg2((uint32_t)clamp(r, 461, 65535)) + 18;
-        y = 48 * 16 - y * 80 * 16 / 1087;
-        ys[k] = y = y > -40 * 16 ? y : -40 * 16;
-        wob = mot ? (og_sin(vx_ang(mt, 2000 + (int32_t)k * 1000) + k * 10430u) * mot * 48 / 63) >> 15 : 0;
-        if ((int32_t)k * 256 >= np) { vx_dot(&f, wob, y, 0, 60); continue; }
-        w = 48 + g[k] * 30 / gmax * 16 + (g[k] * 30 % gmax) * 16 / gmax;
-        h = 50 + g[k] * 190 / gmax;
-        vx_ring(&f, wob, y, w, w * 56 >> 8 > 19 ? w * 56 >> 8 : 19, h);
-        a = vx_ang(mt, 1000 + r * 500 / 1024) + k * 10430u;
-        x = wob + ((og_cos(a) * w) >> 15);
-        vx_dot(&f, x, y + ((og_sin(a) * (w * 56 >> 8)) >> 15), 0, h + 40);
-        top = y < top ? y : top;
-    }
-    if (comb) {                                          /* COMB: the waist over its rings */
-        int32_t c = clamp((comb * 10 * 2 / 127 - 2 + 1) / 2, 0, DRW_NP - 1), y = ys[c];
-        vx_line(&f, -34 * 16, y, -6 * 16, y, 70);
-        vx_line(&f, 6 * 16, y, 34 * 16, y, 70);
-    }
-    fy = (top < 30 * 16 ? top : 30 * 16) - 9 * 16;
-    vx_ring(&f, 0, fy, 8 * 16, 7 * 16, 140 + (en * 80 >> 8));
-    vx_face(&f, 0, fy, 56, 23, age < 100u, fy + 67, 21, en > 13 ? en * 53 >> 8 : 0, 28, 230, 230, 210);
-    vxs.kc = 0;
-}
 
 /* ------------------------------------------------------------------------------------------------ the glue --- */
 /* the engine's own creature in the rectangle x y w h (px: EDIT's left panel 8 14 108 112, HOME's middle 146 x 112, or a
@@ -1933,7 +1881,7 @@ static int32_t vx_fit(int32_t w, int32_t h, int32_t uw, int32_t uh)   /* a unit'
 }
 typedef struct { const engine_t *e; void (*f)(const track_t *, const int32_t *, int32_t); } vxe_t;
 static const vxe_t VX_F[] = {{&ENG_ANALOG, vx_analog}, {&ENG_WHEEL, vx_wheel}, {&ENG_NOISE, vx_noise}, {&ENG_PHASE, vx_phase},
-                             {&ENG_LOFI, vx_lofi}, {&ENG_STRING, vx_string}, {&ENG_ADD, vx_add}};   /* (0.9.9-snd5) */
+                             {&ENG_LOFI, vx_lofi}, {&ENG_STRING, vx_string}};   /* (0.9.9-snd5; ADD's TOTEM gone in par11) */
 static int vx_draw(const track_t *t, int32_t x, int32_t y, int32_t w, int32_t h, int32_t en_home)
 {
     const engine_t *e = trk_engp(t);
