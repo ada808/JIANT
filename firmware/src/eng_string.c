@@ -20,8 +20,19 @@
 #define ST_SL 128u                                       /* a voice's line: comb_buf[part] / NVOICE */
 #define ST_MAXP ((ST_SL - 6u) << 8)                      /* the longest period a line holds (Q8) */
 static int16_t comb_buf[NTRK][1024] __attribute__((section(".pool")));   /* (voice.c: the COMB's lines, COMB_LEN) */
-static const char *const N_STR_EXC[] = {"NOISE", "PLUCK", "PICK", "HAMMR", "STICK"};   /* (five letters: a knob's cell) */
-enum { SX_NOISE, SX_PLUCK, SX_PICK, SX_HAMMER, SX_MALLET, SX_N };
+static const char *const N_STR_EXC[] = {"NOISE", "PLUCK", "PICK", "HAMMR", "STICK", "FDBK"};   /* (five letters: a knob's cell) */
+enum { SX_NOISE, SX_PLUCK, SX_PICK, SX_HAMMER, SX_MALLET, SX_FDBK, SX_N };
+/* (p10) FDBK: a guitar's feedback. Plucked as PLUCK, then an amp hears the string and plays it back into it: the BODY
+ * page becomes the amp's. GAIN how much comes back, DIST the amp's drive (a soft clip: the loop's own limiter),
+ * SPEAKR where along the period the speaker's sound meets the string (which harmonic it blooms into), BLOOM how slowly
+ * the feedback grows while the key is held. BRIGHT stays the tone. No memory more: the speaker's tap is the line. */
+static const param_desc_t STR_AMP[4] = {
+    {"GAIN", F_PCT, 0, 127, 0, 0, 0}, {"DIST", F_PCT, 0, 127, 40, 0, 0},
+    {"SPEAKR", F_PCT, 0, 127, 40, 0, 0}, {"BLOOM", F_PCT, 0, 127, 0, 0, 0}};
+static const param_desc_t *string_desc(const track_t *t, uint32_t k)
+{
+    return k >= 4u && t->p[P_E0] == SX_FDBK ? &STR_AMP[k - 4u] : 0;
+}
 
 static int16_t *str_line(const track_t *t, const voice_t *v)
 {
@@ -77,6 +88,10 @@ static void string_note_on(track_t *t, voice_t *v)
     int16_t *b = str_line(t, v);
     uint32_t d, per = str_period(pitch_inc((uint32_t)clamp(v->pitch16, 0, 2047)), &d), n = per >> 8, mode = (uint32_t)p[P_E0] % SX_N;
     uint32_t i, w, pp, wd;
+    if (mode == SX_FDBK) {                               /* (p10) plucked; the feedback grows again from 0 */
+        mode = SX_PLUCK;
+        v->s[6] = 0;
+    }
     int32_t nz = (int32_t)(v->note * 2654435761u + 0x9E37u) | 1, nz2, lp = 0, lp2 = 0, amp = 9000 + v->vel * 90, sum = 0, k, mean;
     int32_t br = clamp(p[P_E2] + v->vel / 4 - 16, 0, 127);
     if (!v->env) {                                       /* (from silence: the line and the loop at rest) */
@@ -120,14 +135,28 @@ static void string_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
     uint32_t d, per = str_period(m->inc, &d), D = 1u << d, i, w = v->ph[1] % ST_SL, cnt = (v->ph[1] >> 8) & 63u;
     int32_t lp = v->s[0], r1 = v->s[1], apx = v->s[2], apy = v->s[3], y0 = v->s[4], y1 = v->s[5], bl = v->s[6], bb = v->s[7];
     int32_t dc = (int32_t)v->ph[2], nst = (int32_t)v->ph[0] | 1, bow = v->gate ? clamp(p[P_E7], 0, 127) : 0, body = clamp(p[P_E5], 0, 127), bf;
+    int32_t fb = p[P_E0] == SX_FDBK, fk = 0, fdr = 0;
+    uint32_t ft = 0;
     int32_t br = clamp(p[P_E2] + ((m->shape - (64 << 8)) >> 8), 0, 127), a = 5000 + br * 218;
     int32_t s15 = clamp(p[P_E4], 0, 127) * 193, comp, dly, di, fr, g, pk = 0;
+    if (fb) {                                            /* (p10) FDBK: the BODY page is the amp's */
+        bl = v->gate ? bl + (8192 >> (clamp(p[P_E7], 0, 127) / 12)) : bl - (bl >> 3);   /* BLOOM: 6 ms .. 6 s up */
+        bl = clamp(bl, 0, 32767);
+        fk = (clamp(p[P_E4], 0, 127) * (bl >> 7)) >> 2;    /* GAIN x the bloom (Q15 / 4: a quarter at most a pass) */
+        fdr = 256 + clamp(p[P_E5], 0, 127) * 24;           /* DIST: x1 .. x13 into the clip */
+        s15 = 0;
+        bow = 0;
+        body = 0;
+    }
     comp = 128 + ((32768 - a) << 8) / a + ((32768 + s15) << 8) / (32768 - s15);   /* the average's, the low-pass's, the allpass's delays */
     dly = (int32_t)per - comp;
     if (dly < (2 << 8))
         dly = 2 << 8;
     di = dly >> 8;
     fr = dly & 255;
+    ft = 1u + (((uint32_t)di * (12u + 2u * (uint32_t)clamp(p[P_E6], 0, 127))) >> 8);   /* SPEAKR: 0.05 .. 1 period back */
+    if (ft > ST_SL - 2u)
+        ft = ST_SL - 2u;
     g = str_gain(per << d, p[P_E1]);
     if (!v->gate) {                                      /* (p5) let go: RELEASE the damper (low: a palm mute; high: it
                                                          * rings its DECAY out) */
@@ -148,6 +177,14 @@ static void string_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
             if (bow)                                     /* BOW (p5): noise into the loop before its low-pass, so what
                                                          * sounds is the string, not a layer of noise over it */
                 x += (((int32_t)(noise32(&nst) >> 20) - (int32_t)(noise32(&nst) >> 20)) * bow) >> 7;
+            if (fk) {                                    /* the amp: the string heard SPEAKR back, driven into a soft
+                                                         * clip (3x - x^3) / 2, played back into the string */
+                int32_t c = b[(w + ST_SL - ft) % ST_SL];
+                bb += (c - bb) >> 5;                     /* (its DC tracked and taken out: none builds up in the loop) */
+                c = clamp(((c - bb) * fdr) >> 8, -32767, 32767);
+                c = (3 * c - ((((c * c) >> 15) * c) >> 15)) >> 1;
+                x += (c * fk) >> 15;
+            }
             lp += ((x - lp) * a) >> 15;
             yy = ((-s15 * (lp - apy)) >> 15) + apx;      /* (the allpass, its coefficient -STRETCH) */
             apx = lp;
@@ -169,6 +206,9 @@ static void string_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
             bb = clamp(bb, -65536, 65536);
             s += (bb * body) >> 8;
         }
+        if (fk)                                          /* (FDBK's loop rides at the clip: -15 dB once bloomed, beside a
+                                                         * pluck) */
+            s = (s * (32 - ((bl * 26) >> 15))) >> 5;
         dc += ((s << 12) - dc) >> 10;                    /* (the output's DC blocked: ~7 Hz; Q12, what sticks under a
                                                          * quarter of a step: rounded away) */
         s -= (dc + 2048) >> 12;
@@ -193,7 +233,7 @@ static void string_block(track_t *t)
         t->p[P_FTYPE] = FT_BP;
 }
 
-/* {EXCITE, DECAY, BRIGHT, POS, STRETCH, BODY, SIZE, BOW}, {A D S R}, fenv, mono */
+/* {EXCITE, DECAY, BRIGHT, POS, STRETCH, BODY, SIZE, BOW (FDBK: GAIN DIST SPEAKR BLOOM)}, {A D S R}, fenv, mono */
 static const preset_t STRING_PRESETS[] = {
     {"NYLON", {SX_PLUCK, 72, 52, 28, 0, 60, 40, 0}, {0, 64, 127, 104}, 0, TAG(PLUCK), FX(0, 0, 0, 30), PAT(3)},
     {"STEEL GTR", {SX_PICK, 86, 88, 24, 6, 40, 52, 0}, {0, 64, 127, 104}, 0, TAG(PLUCK), FX(0, 15, 0, 30), PAT(3)},
@@ -207,6 +247,8 @@ static const preset_t STRING_PRESETS[] = {
     {"BOWED", {SX_NOISE, 118, 46, 30, 0, 50, 40, 70}, {30, 64, 127, 96}, 0, TAG(PAD), FX(0, 20, 10, 60), PAT(5)},
     {"KS NOISE", {SX_NOISE, 80, 127, 0, 0, 0, 0, 0}, {0, 64, 127, 90}, 0, TAG(FX), FX(0, 0, 15, 30), PAT(4)},
     {"METAL STR", {SX_NOISE, 100, 120, 10, 112, 0, 0, 0}, {0, 64, 127, 104}, 0, TAG(PLUCK), FX(0, 0, 20, 45), PAT(3)},
+    {"FEEDBACK", {SX_FDBK, 90, 70, 24, 60, 70, 40, 60}, {0, 64, 127, 90}, 0, TAG(LEAD), FX(30, 0, 20, 35), PAT(5)},
+    {"SHOEGAZE", {SX_FDBK, 110, 50, 30, 55, 100, 90, 70}, {0, 64, 127, 112}, 0, TAG(PAD), FX(20, 30, 30, 70), PAT(5)},
 };
 
 static const engine_t ENG_STRING = {
@@ -231,4 +273,5 @@ static const engine_t ENG_STRING = {
     .block = string_block,
     .ownenv = 1,                                         /* (p5: RELEASE its damper; the sequencer's short gates let it ring) */
     .done = string_done,
+    .desc = string_desc,
 };

@@ -194,11 +194,42 @@ static double Y[NS], PS[NFFT / 2];
 static double want_hz(uint32_t nt) { return 440.0 * pow(2, ((int)nt - 69) / 12.0); }
 
 /* ---------------------------------------------------------------- STRING --- */
+/* (p10) FDBK: a held note sustains and blooms with GAIN (none: a pluck dying out), bounded at every SPEAKR */
+static void string_fdbk(void)
+{
+    static double y[FS / 4], ps[NFFT];
+    static const int16_t G[3] = {0, 60, 127};
+    double r[3][2], f[3], top = 0;
+    uint32_t g, k;
+    char what[200];
+    EG = &ENG_STRING;
+    for (g = 0; g < 3u; g++) {
+        int16_t e[8] = {SX_FDBK, 40, 80, 24, 0, 70, 40, 20};
+        e[4] = G[g];
+        setup(-1, e);
+        voice_render(52, 0.05, y, FS / 4);
+        r[g][0] = rms(y, FS / 4, 0);
+        voice_render(52, 0, y, 0);                       /* (nothing: the key still held) */
+        setup(-1, e);
+        voice_render(52, 3.0, y, FS / 4);
+        r[g][1] = rms(y, FS / 4, 0);
+        for (k = 0; k < FS / 4; k++)
+            top = fabs(y[k]) > top ? fabs(y[k]) : top;
+        spectrum(y, FS / 4 < NFFT ? FS / 4 : NFFT, ps);
+        f[g] = peak_hz(ps, 60, 5000);
+        printf("  FDBK GAIN %3d: RMS %.4f -> %.4f at 3 s, peak at %.0f Hz\n", G[g], r[g][0], r[g][1], f[g]);
+    }
+    snprintf(what, sizeof what, "STRING FDBK: GAIN 0 dies out (%.4f), GAIN 60 / 127 sustain at 3 s (%.3f %.3f), under full scale",
+             r[0][1], r[1][1], r[2][1]);
+    check(what, r[0][1] < r[0][0] * 0.1 && r[1][1] > 0.02 && r[2][1] > r[1][1] * 0.8 && top < 1.0);
+}
+
 static void string_tune(void)
 {
     static const int16_t E[SX_N][8] = {{SX_NOISE, 100, 90, 20, 0, 0, 40, 0}, {SX_PLUCK, 100, 90, 20, 0, 0, 40, 0},
                                        {SX_PICK, 100, 90, 20, 0, 0, 40, 0}, {SX_HAMMER, 100, 90, 20, 0, 0, 40, 0},
-                                       {SX_MALLET, 100, 90, 30, 0, 0, 40, 0}};
+                                       {SX_MALLET, 100, 90, 30, 0, 0, 40, 0},
+                                       {SX_FDBK, 100, 90, 20, 0, 0, 40, 0}};   /* (p10: GAIN 0, a plucked string) */
     double worst = 0, f, w;
     uint32_t m, nt, wn = 0, wm = 0;
     char what[200];
@@ -470,6 +501,7 @@ int main(int argc, char **argv)
     string_decay();
     string_bright();
     string_comb();
+    string_fdbk();
     add_partials();
     add_shape();
     add_alias();

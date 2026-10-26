@@ -1636,7 +1636,7 @@ function makeMockDevice(opt = {}) {
         P("SOFT KEYS", [3, 0, 0, -2, 0, 5, 0, 0], [5, 64, 127, 50], 0, 6), P("CHURCH", [12, 0, 0, 0, 0, 0, 0, 0], [15, 64, 127, 70], 0, 5),
         P("WAVE ORGAN", [8, 0, 0, 2, 3, 35, 15, 2], [0, 64, 127, 35], 0, 3), P("REED BASS", [14, 2, 0, -4, 0, 20, 10, 0], [0, 64, 127, 30], 1, 2)] },
     /* 8: STRING (JIANT 0.9.9-snd5, src/eng_string.c; generated from it): Karplus-Strong in the COMB's lines (GRAIN's number, retired in JIANT) */
-    { name: "STRING", titles: ["STRING", "BODY"], edit: [E("EXCITE", ["NOISE", "PLUCK", "PICK", "HAMMR", "STICK"], 1),
+    { name: "STRING", titles: ["STRING", "BODY"], edit: [E("EXCITE", ["NOISE", "PLUCK", "PICK", "HAMMR", "STICK", "FDBK"], 1),
         D("DECAY", F.PCT, 0, 127, 72), D("BRIGHT", F.PCT, 0, 127, 60), D("POS", F.PCT, 0, 127, 28), D("STRETCH", F.PCT, 0, 127, 0),
         D("BODY", F.PCT, 0, 127, 40), D("SIZE", F.PCT, 0, 127, 40), D("BOW", F.PCT, 0, 127, 0)],
       presets: [P("NYLON", [1, 72, 52, 28, 0, 60, 40, 0], [0, 64, 127, 104], 0, 3), P("STEEL GTR", [2, 86, 88, 24, 6, 40, 52, 0], [0, 64, 127, 104], 0, 3),
@@ -1644,7 +1644,8 @@ function makeMockDevice(opt = {}) {
         P("BANJO", [2, 52, 112, 10, 4, 90, 92, 0], [0, 64, 127, 96], 0, 4), P("PIANO", [3, 104, 76, 18, 42, 20, 22, 0], [0, 64, 127, 100], 0, 6),
         P("DULCIMER", [3, 92, 100, 20, 26, 36, 60, 0], [0, 64, 127, 108], 0, 5), P("MARIMBA", [4, 56, 40, 64, 72, 80, 70, 0], [0, 64, 127, 96], 0, 5),
         P("PLUCK BASS", [1, 62, 36, 20, 0, 50, 10, 0], [0, 64, 127, 80], 1, 2), P("BOWED", [0, 118, 46, 30, 0, 50, 40, 70], [30, 64, 127, 96], 0, 5),
-        P("KS NOISE", [0, 80, 127, 0, 0, 0, 0, 0], [0, 64, 127, 90], 0, 4), P("METAL STR", [0, 100, 120, 10, 112, 0, 0, 0], [0, 64, 127, 104], 0, 3)] },
+        P("KS NOISE", [0, 80, 127, 0, 0, 0, 0, 0], [0, 64, 127, 90], 0, 4), P("METAL STR", [0, 100, 120, 10, 112, 0, 0, 0], [0, 64, 127, 104], 0, 3),
+        P("FEEDBACK", [5, 90, 70, 24, 60, 70, 40, 60], [0, 64, 127, 90], 0, 5), P("SHOEGAZE", [5, 110, 50, 30, 55, 100, 90, 70], [0, 64, 127, 112], 0, 5)] },
     /* 9: reserved (PHYS, retired in TONIC: src/engines.c ENG_PHYS_GONE; its sounds load as ANALOG) */
     { name: "-", titles: ["-", "-"], edit: [D("-", F.INT, 0, 127, 0), D("-", F.INT, 0, 127, 0), D("-", F.INT, 0, 127, 0),
         D("-", F.INT, 0, 127, 0), D("-", F.INT, 0, 127, 0), D("-", F.INT, 0, 127, 0), D("-", F.INT, 0, 127, 0), D("-", F.INT, 0, 127, 0)],
