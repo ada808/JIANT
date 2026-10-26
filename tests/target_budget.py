@@ -32,7 +32,7 @@ FUNCS = ["analog_render", "digital_render", "digital_render_legacy", "digital_re
          "rev_room", "rev_spring", "dist_amp", "dx_hands_step", "drw_dust",                # the reverb bus (fx.c): REVERB TYPE ROOM / SPRING
          "dly_lo",                                          # (0.8.4) the delay at half / a quarter rate (fx.c)
          "animal_render",                                   # (JIANT 0.8.3) ANIMAL (eng_animal.c): its five sources (one loop a voice)
-         "string_render", "add_render",                     # (0.9.9-snd5) STRING (its loop at 1 / 2^d), ADD (nine partials)
+         "string_render",                                   # (0.9.9-snd5) STRING (its loop at 1 / 2^d; par11: ADD retired)
          "formant_word_render", "formant_block",           # (JIANT 0.8.5) VOICE singing words (eng_formant.c, sing.c)
          "djf_block",                                      # (0.9.1) the master DJ FILTER (fx.c), while it is off the middle
          "track_comb", "tf_run", "tf_ms20"]                 # (0.9.9-snd1) the FILTER after the voices: COMB / COMB-, the SVF, MS20

@@ -5582,7 +5582,7 @@ static int test_fm4_retired(void)
 {
     int bad = 0, ok = 1;
     uint32_t i, k, e, total, seen = 0, all = ((1u << NENGINES) - 1u) & ~(1u << ENGI_DIGITAL) & ~(1u << ENGI_PHYS) &
-        ~(1u << ENGI_SAMPLE) & ~(1u << ENGI_TRIO);   /* (0.9.9-snd5: GRAIN's 8 and SLICE's 13 are STRING and ADD) */
+        ~(1u << ENGI_SAMPLE) & ~(1u << ENGI_TRIO) & ~(1u << ENGI_ADD);   /* (0.9.9-snd5: GRAIN's 8 STRING; par11: ADD retired) */
     int16_t p[P_COUNT];
     uint8_t v[FP_SIZE + 1u];
     ui_power_on();
