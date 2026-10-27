@@ -4,7 +4,7 @@
  * (hostsim.c), no hardware. A bank built here (IMA ADPCM, as the web editor's SAMPLES tab builds it): a 440 Hz sine
  * at 8 kHz and a noise at 11025 Hz.
  * 1. The bank indexed: two slots, their names; a bad CRC or magic: none, SAMPLE silent, its slots "-".
- * 2. PITCH: C4 as recorded (440 Hz), C5 an octave up; no DC, under full scale.
+ * 2. PITCH (and GRAIN: a freeze at the top, grains of the sine in between): C4 as recorded (440 Hz), C5 an octave up; no DC, under full scale.
  * 3. LOOP OFF ends at the sample's end, ON plays on; START / LENGTH cut it; KEYS SLOTS: C#4 the next slot.
  * 4. BITS and RATE change the sound; the transfer (BEGIN / WRITE / END) with its CRC, a wrong CRC refused. */
 #define main hostsim_main
@@ -82,6 +82,7 @@ static void build(void)
     smp_bank.h.ver = 1;
     at = put(0, 4000, 8000, "SINE", 0);                 /* 0.5 s */
     at = put(at, 2205, 11025, "NOISE", 1);              /* 0.2 s */
+    at = put(at, 400, 2000, "LOW", 0);                  /* (par13b) 2 kHz: the long ones */
     smp_bank.h.len = at;
     smp_bank.h.crc = ~st_crc32_add(0xFFFFFFFFu, smp_bank.b + 16, SMP_HEAD - 16u + at);
 }
@@ -140,8 +141,8 @@ int main(void)
     uint32_t i;
     build();
     smp_index();
-    check("the bank indexed: two slots, SINE and NOISE", smp_ix.count == 2 && !strcmp(smp_names[0], "SINE") &&
-          !strcmp(smp_names[1], "NOISE") && !strcmp(smp_names[2], "-"));
+    check("the bank indexed: three slots, SINE, NOISE and LOW (2 kHz)", smp_ix.count == 3 && !strcmp(smp_names[2], "LOW") && !strcmp(smp_names[0], "SINE") &&
+          !strcmp(smp_names[1], "NOISE") && !strcmp(smp_names[3], "-"));
     {
         int16_t e[8] = {0, 0, 127, 0, 0, 0, 0, 0};
         setup(e);
@@ -180,6 +181,18 @@ int main(void)
         snprintf(what, sizeof what, "KEYS SLOTS: C#4 the next slot (the noise: %.0f crossings a second)", hz(y, FS / 10));
         check(what, hz(y, FS / 10) > 1500);
         e[7] = 0;
+        e[6] = 127;                                      /* GRAIN at the top: a freeze */
+        setup(e);
+        play(60, 1.5, y, FS / 10);
+        r0 = rms(y, FS / 10);
+        snprintf(what, sizeof what, "GRAIN at the top freezes it: a 0.5 s sample still sounds at 1.5 s (%.4f), under full scale", r0);
+        check(what, r0 > 0.02 && r0 < 0.7);
+        e[6] = 64;
+        setup(e);
+        play(60, 0.1, y, FS / 4);
+        snprintf(what, sizeof what, "GRAIN 64: grains of the sine (%.0f Hz under the window), sounding (%.4f)", hz(y, FS / 4), rms(y, FS / 4));
+        check(what, rms(y, FS / 4) > 0.02 && fabs(hz(y, FS / 4) - 440) < 40);
+        e[6] = 0;
         setup(e);
         play(60, 0.05, y, FS / 10);
         r0 = rms(y, FS / 10);
@@ -209,7 +222,7 @@ int main(void)
         for (i = 0; i < SMP_BANK; i += 64)
             rc |= smp_write(i, keep + i, 64);
         rc |= smp_end(crc);
-        check("  WRITEs and END with the CRC: the bank plays again (two slots)", !rc && smp_ix.count == 2 &&
+        check("  WRITEs and END with the CRC: the bank plays again (three slots)", !rc && smp_ix.count == 3 &&
               !memcmp(keep, smp_bank.b, SMP_BANK));
         smp_begin();
         for (i = 0; i < SMP_BANK; i += 64)

@@ -10867,8 +10867,8 @@ static int test_scope(void)
     for (sk = 0; sk < SKIN_N; sk++)                               /* the EDIT pages of every engine with a creature */
         for (e = 0; e < NENGINES; e++) {
             uint32_t on_tile, on_mid, off_tile, off_mid, gy, chips;
-            if (!eng_ok(e) || e == ENGI_DRUM || e == ENGI_FM6 || eng_gone(e) || str_eq(ENGINES[e]->name, "DIGITAL"))
-                continue;                                         /* (DIGITAL, FELUCCA_FM4=1: its OP pages, no creature) */
+            if (!eng_ok(e) || e == ENGI_DRUM || e == ENGI_FM6 || e == ENGI_ADD || eng_gone(e) || str_eq(ENGINES[e]->name, "DIGITAL"))
+                continue;                                         /* (DIGITAL, FELUCCA_FM4=1: its OP pages; par13 SAMPLE: no creature) */
             ui_power_on(); ui_skin = (uint8_t)sk; set_engine_of(TSEL, e); TSEL->engine = TSEL->eng_req;
             go_title("EDIT 1"); ui.force = 1; frame(); frame();
             if (trk_engp(TSEL) == &ENG_FORMANT && TSEL->p[P_VLANG])

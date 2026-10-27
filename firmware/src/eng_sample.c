@@ -2,7 +2,7 @@
  * Copyright (C) 2026 Leo Kuroshita (@kurogedelic), Hügelton Instruments
  * Portions Copyright (C) 2026 Juan Ignacio Antonucci (Juan Jiant) */
 /* SAMPLE (JIANT 0.9.9-par13, engine 13: ADD's number before): a hyper lo-fi sampler. The owner's own sounds, sent from
- * the web editor (its SAMPLES tab: WAV -> mono, 6..16 kHz, IMA ADPCM 4 bits), up to SMP_SLOTS of them in one bank of
+ * the web editor (its SAMPLES box: WAV -> mono, 2..16 kHz, IMA ADPCM 4 bits), up to SMP_SLOTS of them in one bank of
  * SMP_BANK bytes: ~1.5 s at 8 kHz in all (~2 s at 6 kHz). The data flash is no XIP on the FM-1 (it is read with IRQs off: storage_hw.c),
  * so the bank lives in RAM (the pool, smp_bank) and in flash at 0xDA000 (sample_bank.c: power-on copies it in).
  *
@@ -10,12 +10,13 @@
  * rate times the note's (C4 = as recorded; KEYS SLOTS: every key the next slot from SLOT, at its own pitch: a kit),
  * no interpolation (each sample held: the aliasing is the sound). Seeking: the ADPCM state every SMP_CHK samples,
  * kept at load (smp_chk), so START and LOOP decode at most SMP_CHK - 1 samples ahead. Then BITS (16 .. 1), RATE (a
- * sample held 1 .. 16 output samples) and DRIVE (a soft clip). Its amplitude: the ADSR, as any engine.
+ * sample held 1 .. 16 output samples) and GRAIN (one knob: grains, the time stretched to a freeze; par13b, was DRIVE:
+ * the track's DIST does that). Its amplitude: the ADSR, as any engine.
  *
  * Voice state: ph[0] the read position (Q16, in the bank's samples), ph[1] the slot | the bank's generation << 8
- * (a bank sent while it plays: the voice goes silent), ph[2] RATE's countdown; s[0] the ADPCM predictor, s[1] its
+ * (a bank sent while it plays: the voice goes silent) | SMP_END, ph[2] RATE's countdown | the grain's samples << 8; s[0] the ADPCM predictor, s[1] its
  * step index, s[2] the next sample to decode, s[3] the end, s[4] the loop's start, s[5] the held output, s[6] the last
- * decoded, s[7] 1 once it ended. */
+ * decoded, s[7] GRAIN's anchor (Q16). */
 #define SMP_SLOTS 15u
 #define SMP_BANK 6144u                         /* the bank: its header (256 bytes) and the data (the pool's reserve
                                                 * went from 8 to 4 KiB for it: tools/build.py) */
@@ -26,7 +27,7 @@
 #define SMP_MAGIC 0x504D534Au                  /* "JSMP" */
 typedef struct {
     uint16_t off, n;                           /* its first byte (in the data), its samples (4 bits each) */
-    uint16_t rate;                             /* Hz, 4000 .. 16000 */
+    uint16_t rate;                             /* Hz, 1000 .. 16000 (par13b: from 1 kHz, the long ones) */
     char name[10];                             /* ASCII, 0-padded (the knob shows 5) */
 } smp_ent_t;
 typedef struct {
@@ -88,15 +89,15 @@ static void smp_seek(voice_t *v, uint32_t s, uint32_t at)
     v->s[6] = pred;
 }
 
+#define SMP_END 0x80000000u                    /* ph[1]: the voice ended */
 static void sample_note_on(track_t *t, voice_t *v)
 {
     const int16_t *p = t->p;
     uint32_t s = (uint32_t)clamp(p[P_E0], 0, SMP_SLOTS - 1), n, st, len;
     const smp_ent_t *e;
-    v->s[7] = 1;
     if (p[P_E7] == 1)                                    /* KEYS SLOTS: C4 the slot, each key up the next */
         s = (uint32_t)((int32_t)s + (int32_t)v->note - 60 + 4 * (int32_t)SMP_SLOTS) % SMP_SLOTS;
-    v->ph[1] = s | (uint32_t)smp_ix.gen << 8;
+    v->ph[1] = s | (uint32_t)smp_ix.gen << 8 | SMP_END;
     if (s >= smp_ix.count || smp_ix.c0[s] == 255u)
         return;
     e = &smp_bank.h.e[s];
@@ -107,29 +108,57 @@ static void sample_note_on(track_t *t, voice_t *v)
     v->s[3] = (int32_t)(st + len);
     v->s[4] = (int32_t)st;
     v->s[5] = 0;
-    v->s[7] = 0;
+    v->s[7] = (int32_t)(st << 16);                       /* GRAIN's anchor */
+    v->ph[1] &= ~SMP_END;
     v->ph[0] = st << 16;
     v->ph[2] = 0;
 }
 
+/* (par13b) GRAIN, one knob: past 0 the sample is played in grains of 50 .. 10 ms, each from the anchor (which walks on
+ * slower and slower: at the top it stands, a freeze) plus a scatter that grows with it, under a triangle window */
 static void sample_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, const vmod_t *m)
 {
     const int16_t *p = t->p;
-    uint32_t s = v->ph[1] & 255u, i, pos = v->ph[0], step, hold = 1u + (uint32_t)clamp(p[P_E5], 0, 127) / 8u, hc = v->ph[2];
+    uint32_t s = v->ph[1] & 255u, i, pos = v->ph[0], step, hold = 1u + (uint32_t)clamp(p[P_E5], 0, 127) / 8u;
+    uint32_t hc = v->ph[2] & 255u, gc = v->ph[2] >> 8, gl, an = (uint32_t)v->s[7];
     int32_t pred = v->s[0], idx = v->s[1], nx = v->s[2], end = v->s[3], ls = v->s[4], ho = v->s[5], cur = v->s[6];
-    int32_t sh = clamp(p[P_E4], 0, 127) * 15 / 127, dr = clamp(p[P_E6], 0, 127), dg = 256 + dr * 14;
-    if (v->s[7] || s >= smp_ix.count || (v->ph[1] >> 8) != smp_ix.gen)
+    int32_t sh = clamp(p[P_E4], 0, 127) * 15 / 127, gr = clamp(p[P_E6], 0, 127), loop = p[P_E3] == 1;
+    if ((v->ph[1] & SMP_END) || s >= smp_ix.count || ((v->ph[1] >> 8) & 255u) != smp_ix.gen)
         return;                                          /* (ended, or a new bank: silent) */
     if (p[P_E7] == 1)                                    /* KEYS SLOTS: as recorded */
         step = ((uint32_t)smp_bank.h.e[s].rate << 16) / 44100u;
     else                                                 /* PITCH: C4 as recorded */
         step = ((m->inc >> 14) * (uint32_t)smp_bank.h.e[s].rate) / 1046u;
+    gl = 2205u - (uint32_t)gr * 13u;
     for (i = 0; i < n; i++) {
         int32_t y;
+        if (gr) {                                        /* GRAIN */
+            an += (step * (uint32_t)(128 - gr)) >> 7;
+            if ((int32_t)(an >> 16) >= end) {
+                if (!loop) {
+                    v->ph[1] |= SMP_END;
+                    break;
+                }
+                an = (uint32_t)ls << 16;
+            }
+            if (++gc >= gl || nx >= end) {               /* a new grain: the anchor and a scatter */
+                uint32_t at = (an >> 16) + ((((an >> 4) ^ gc) * 2654435761u) >> 20) % (uint32_t)(gr * 24 + 1);
+                gc = 0;
+                if ((int32_t)at >= end)
+                    at = (uint32_t)ls;
+                smp_seek(v, s, at);
+                pred = v->s[0];
+                idx = v->s[1];
+                nx = (int32_t)at;
+                pos = at << 16;
+            }
+        }
         while (nx <= (int32_t)(pos >> 16)) {
             if (nx >= end) {
-                if (p[P_E3] != 1) {                      /* the end: silent from here */
-                    v->s[7] = 1;
+                if (gr)
+                    break;                               /* (GRAIN: the next grain takes it) */
+                if (!loop) {                             /* the end: silent from here */
+                    v->ph[1] |= SMP_END;
                     break;
                 }
                 smp_seek(v, s, (uint32_t)ls);            /* LOOP: from START again */
@@ -140,33 +169,31 @@ static void sample_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
             }
             cur = smp_dec((uint32_t)nx++, &pred, &idx);
         }
-        if (v->s[7])
+        if (v->ph[1] & SMP_END)
             break;
         pos += step;
         if (++hc >= hold) {                              /* RATE: a sample held for `hold` outputs */
             hc = 0;
-            y = (cur >> sh) << sh;                       /* BITS */
-            if (dr) {                                    /* DRIVE: (3x - x^3) / 2 */
-                int32_t c = clamp((y * dg) >> 8, -32767, 32767);
-                y = (3 * c - ((((c * c) >> 15) * c) >> 15)) >> 1;
-            }
-            ho = y;
+            ho = (cur >> sh) << sh;                      /* BITS */
         }
-        out[i] += voice_amp(ho, m, i);
+        y = ho;
+        if (gr)                                          /* the grain's triangle */
+            y = y * (int32_t)(gc < gl / 2u ? gc : gl - gc) / (int32_t)(gl / 2u);
+        out[i] += voice_amp(y, m, i);
     }
     v->ph[0] = pos;
-    v->ph[2] = hc;
-    v->s[0] = pred; v->s[1] = idx; v->s[2] = nx; v->s[5] = ho; v->s[6] = cur;
+    v->ph[2] = hc | gc << 8;
+    v->s[0] = pred; v->s[1] = idx; v->s[2] = nx; v->s[5] = ho; v->s[6] = cur; v->s[7] = (int32_t)an;
 }
 
-/* {SLOT, START, LENGTH, LOOP, BITS, RATE, DRIVE, KEYS}, {A D S R}, fenv, mono */
+/* {SLOT, START, LENGTH, LOOP, BITS, RATE, GRAIN, KEYS}, {A D S R}, fenv, mono */
 static const preset_t SAMPLE_PRESETS[] = {
     {"SAMPLE", {0, 0, 127, 0, 0, 0, 0, 0}, {0, 64, 127, 20}, 0, TAG(FX), FX(0, 0, 0, 10), PAT(4)},
     {"KIT KEYS", {0, 0, 127, 0, 0, 0, 0, 1}, {0, 64, 127, 10}, 0, TAG(DRUM), FX(0, 0, 0, 5), PAT(1)},
     {"8 BIT", {0, 0, 127, 0, 60, 8, 0, 0}, {0, 64, 127, 20}, 0, TAG(FX), FX(0, 0, 10, 10), PAT(4)},
-    {"CRUSH", {0, 0, 127, 0, 100, 40, 60, 0}, {0, 64, 127, 20}, 0, TAG(FX), FX(20, 0, 10, 10), PAT(4)},
-    {"LOOP PAD", {0, 20, 60, 1, 20, 0, 0, 0}, {40, 64, 127, 70}, 0, TAG(PAD), FX(0, 30, 20, 50), PAT(5)},
-    {"SAMP BASS", {0, 0, 127, 0, 30, 0, 40, 0}, {0, 64, 127, 15}, 0, 1 | TAG(BASS), FX(10, 0, 0, 5), PAT(2)},
+    {"CRUSH", {0, 0, 127, 0, 100, 40, 0, 0}, {0, 64, 127, 20}, 0, TAG(FX), FX(20, 0, 10, 10), PAT(4)},
+    {"LOOP PAD", {0, 20, 60, 1, 20, 0, 70, 0}, {40, 64, 127, 70}, 0, TAG(PAD), FX(0, 30, 20, 50), PAT(5)},
+    {"SAMP BASS", {0, 0, 127, 0, 30, 0, 0, 0}, {0, 64, 127, 15}, 0, 1 | TAG(BASS), FX(10, 0, 0, 5), PAT(2)},
 };
 
 static const engine_t ENG_SAMPLE = {
@@ -179,7 +206,7 @@ static const engine_t ENG_SAMPLE = {
         {"LOOP", F_ENUM, 0, 1, 0, N_SMP_LOOP, 0},
         {"BITS", F_PCT, 0, 127, 0, 0, 0},
         {"RATE", F_PCT, 0, 127, 0, 0, 0},
-        {"DRIVE", F_PCT, 0, 127, 0, 0, 0},
+        {"GRAIN", F_PCT, 0, 127, 0, 0, 0},
         {"KEYS", F_ENUM, 0, 1, 0, N_SMP_KEYS, 0},
     },
     .presets = SAMPLE_PRESETS,

@@ -9,6 +9,8 @@
  * bank cleared, SAMPLE silent), WRITE its bytes into RAM, END with its CRC: checked, indexed (SAMPLE plays it at once)
  * and written to flash (both sectors erased, the bank, read back). Included by upreset.c. */
 #define SMP_HOME 0xDA000u
+static uint32_t st_crc32_add(uint32_t c, const void *p, uint32_t n);   /* (storage.c's) */
+static uint32_t st_crc32(const void *p, uint32_t n);
 
 static struct {
     uint8_t on;                                /* a transfer is open */
@@ -29,7 +31,7 @@ static void smp_index(void)
         smp_names[s] = "-";
         smp_ix.c0[s] = 255u;
         if (!ok || s >= h->count || !e->n || (uint32_t)e->off + ((uint32_t)e->n + 1u) / 2u > h->len ||
-            e->rate < 4000u || e->rate > 16000u || c + ((uint32_t)e->n + SMP_CHK - 1u) / SMP_CHK > SMP_NCHK)
+            e->rate < 1000u || e->rate > 16000u || c + ((uint32_t)e->n + SMP_CHK - 1u) / SMP_CHK > SMP_NCHK)
             continue;
         {
             int32_t pred = 0, idx = 0;

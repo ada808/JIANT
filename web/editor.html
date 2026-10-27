@@ -193,7 +193,7 @@
       <p class="dim" data-t="smpHelp"></p>
       <p class="bar"><button id="smpadd" data-t="smpAdd" data-ic="symbol_upload"></button>
         <input type="file" id="smpfile" accept="audio/*,.wav,.WAV" multiple hidden>
-        <label><span data-t="smpRate"></span> <select id="smprate"><option value="6000">6 kHz</option>
+        <label><span data-t="smpRate"></span> <select id="smprate"><option value="2000">2 kHz (x4 ~6 s)</option><option value="3000">3 kHz</option><option value="4000">4 kHz</option><option value="6000">6 kHz</option>
           <option value="8000" selected>8 kHz</option><option value="11025">11 kHz</option><option value="16000">16 kHz</option></select></label>
         <button id="smpclear" data-t="smpClear"></button> <button id="smpsend" data-t="smpSend"></button></p>
       <div id="smplist"></div></div>
@@ -1788,10 +1788,10 @@ function makeMockDevice(opt = {}) {
        0.9.9-snd5 .. par10, SLICE's before); SLOT's names are the device's bank (here as a bank-less device shows them) */
     { name: "SAMPLE", titles: ["SAMPLE", "LOFI"], edit: [E("SLOT", Array(15).fill("-"), 0),
         D("START", F.PCT, 0, 127, 0), D("LENGTH", F.PCT, 0, 127, 127), E("LOOP", ["OFF", "ON"], 0),
-        D("BITS", F.PCT, 0, 127, 0), D("RATE", F.PCT, 0, 127, 0), D("DRIVE", F.PCT, 0, 127, 0), E("KEYS", ["PITCH", "SLOTS"], 0)],
+        D("BITS", F.PCT, 0, 127, 0), D("RATE", F.PCT, 0, 127, 0), D("GRAIN", F.PCT, 0, 127, 0), E("KEYS", ["PITCH", "SLOTS"], 0)],
       presets: [P("SAMPLE", [0, 0, 127, 0, 0, 0, 0, 0], [0, 64, 127, 20], 0, 4), P("KIT KEYS", [0, 0, 127, 0, 0, 0, 0, 1], [0, 64, 127, 10], 0, 1),
-        P("8 BIT", [0, 0, 127, 0, 60, 8, 0, 0], [0, 64, 127, 20], 0, 4), P("CRUSH", [0, 0, 127, 0, 100, 40, 60, 0], [0, 64, 127, 20], 0, 4),
-        P("LOOP PAD", [0, 20, 60, 1, 20, 0, 0, 0], [40, 64, 127, 70], 0, 5), P("SAMP BASS", [0, 0, 127, 0, 30, 0, 40, 0], [0, 64, 127, 15], 1, 2)] },
+        P("8 BIT", [0, 0, 127, 0, 60, 8, 0, 0], [0, 64, 127, 20], 0, 4), P("CRUSH", [0, 0, 127, 0, 100, 40, 0, 0], [0, 64, 127, 20], 0, 4),
+        P("LOOP PAD", [0, 20, 60, 1, 20, 0, 70, 0], [40, 64, 127, 70], 0, 5), P("SAMP BASS", [0, 0, 127, 0, 30, 0, 0, 0], [0, 64, 127, 15], 1, 2)] },
     /* 14: ANIMAL (JIANT 0.8.3, src/eng_animal.c; generated from it): animal calls, five sources (MODE); the labels as the
        device shows them per MODE (animal_desc) are the device's; here the engine's own */
     { name: "ANIMAL", titles: ["SRC", "CALL"], edit: [E("MODE", ["CMOS", "PULSE", "WHSTL", "WING", "GLOTT"], 0),
@@ -2555,7 +2555,7 @@ const TEXT = {
     fm6Init: "初期音色", fm6Voice: "ボイス", fm6Ops: "オペレーター", fm6Carriers: "キャリア", fm6Feedback: "フィードバック",
     fm6PitchEg: "ピッチ EG", fm6Freq: "周波数",
     fm6Legend: "R1〜R4 / L1〜L4: EG のレートとレベル、BP LD RD LC RC: キーボードレベルスケーリング、RS: レートスケーリング、AMS: LFO 音量変調、KVS: ベロシティ、OL: 出力レベル、MODE: 比率 / 固定、FC FF: 周波数（粗・細）、DET: デチューン（7 が中央）。● はキャリア。",
-    smpT: "SAMPLE: 自分のサンプル", smpHelp: "SAMPLE エンジン用の超ローファイなサンプル。WAV を選び（モノ、無音カット、ノーマライズ）、レートを選んで送ります。8 kHz で合計約 1.5 秒、15 スロット。入らない部分はカットされます。電源を切っても本体に残ります。", smpAdd: "オーディオファイルを追加", smpRate: "レート", smpClear: "クリア", smpSend: "本体へ送る", smpUsed: "バンク:", smpNow: "本体:", smpNone: "送るものがありません", smpFail: "サンプルを送れませんでした (rc ", smpSent: "サンプルを送りました:",
+    smpT: "SAMPLE: 自分のサンプル", smpHelp: "SAMPLE エンジン用の超ローファイなサンプル。WAV を選び（モノ、無音カット、ノーマライズ）、レートを選んで送ります。8 kHz で合計約 1.5 秒、2 kHz なら約 6 秒（暗く、ザラついた音）、15 スロット。入らない部分はカットされます。電源を切っても本体に残ります。", smpAdd: "オーディオファイルを追加", smpRate: "レート", smpClear: "クリア", smpSend: "本体へ送る", smpUsed: "バンク:", smpNow: "本体:", smpNone: "送るものがありません", smpFail: "サンプルを送れませんでした (rc ", smpSent: "サンプルを送りました:",
     fm6BankSend: "本体のボイスバンクへ送る (B1–B32)", fm6BankSent: "ボイスバンクを送りました:", fm6BankFail: "ボイスバンクを送れませんでした (rc ", fm6BankNow: "本体のボイスバンク:", fm6BankNone: "なし",
     fm6Pick: "読み込んだファイルの音色（押すと編集へ）:", fm6Picked: "編集中:", fm6Sent: "トラックへ送りました:", fm6Read: "トラックから読みました",
     fm6Loaded: "読み込みました", fm6BadSum: "チェックサム不一致あり",
@@ -2659,7 +2659,7 @@ const TEXT = {
     fm6Init: "Init voice", fm6Voice: "Voice", fm6Ops: "Operators", fm6Carriers: "carriers", fm6Feedback: "feedback",
     fm6PitchEg: "Pitch EG", fm6Freq: "Frequency",
     fm6Legend: "R1..R4 / L1..L4: EG rates and levels; BP LD RD LC RC: keyboard level scaling; RS: rate scaling; AMS: LFO amplitude modulation; KVS: velocity; OL: output level; MODE: ratio / fixed; FC FF: coarse / fine frequency; DET: detune (7 = centre). ● = carrier.",
-    smpT: "SAMPLE: your samples", smpHelp: "Hyper lo-fi samples for the SAMPLE engine: pick WAV files (mono, trimmed, normalised), choose a rate and send them. About 1.5 s in all at 8 kHz, 15 slots; what does not fit is cut. They stay on the device after power-off.", smpAdd: "Add audio files", smpRate: "Rate", smpClear: "Clear", smpSend: "Send to the device", smpUsed: "Bank:", smpNow: "On the device:", smpNone: "Nothing to send", smpFail: "The samples were not sent (rc ", smpSent: "Samples sent:",
+    smpT: "SAMPLE: your samples", smpHelp: "Hyper lo-fi samples for the SAMPLE engine: pick WAV files (mono, trimmed, normalised), choose a rate and send them. About 1.5 s in all at 8 kHz, ~6 s at 2 kHz (darker, crunchier: as if sent sped up and slowed down on the device), 15 slots; what does not fit is cut. They stay on the device after power-off.", smpAdd: "Add audio files", smpRate: "Rate", smpClear: "Clear", smpSend: "Send to the device", smpUsed: "Bank:", smpNow: "On the device:", smpNone: "Nothing to send", smpFail: "The samples were not sent (rc ", smpSent: "Samples sent:",
     fm6BankSend: "Send to the device's voice bank (B1–B32)", fm6BankSent: "Voice bank sent:", fm6BankFail: "The voice bank was not sent (rc ", fm6BankNow: "The device's voice bank:", fm6BankNone: "none",
     fm6Pick: "Voices of the imported file (click to edit):", fm6Picked: "Editing:", fm6Sent: "Sent to track", fm6Read: "Read from track",
     fm6Loaded: "Loaded", fm6BadSum: "a checksum did not match",
