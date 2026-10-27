@@ -2812,6 +2812,10 @@ static const char *mc_status(void)                      /* MENU > ABOUT's line *
 #endif
 }
 
+#ifdef COOP_VAVE
+static int32_t coop_pre[2u * HALF_FRAMES];
+static uint32_t coop_pre_w;
+#endif
 static __attribute__((noinline)) void mix_block(int32_t *out, uint32_t n)   /* (0.6.71: kept out of the ISR's
                                                                                * body, as before: target_budget.py) */
 {
@@ -2887,6 +2891,15 @@ static __attribute__((noinline)) void mix_block(int32_t *out, uint32_t n)   /* (
                 mix_r[i] += sl_r[i];
             }
     }
+#ifdef COOP_VAVE
+    /* (Co-Op Vave, web/coop/vave_coop.c) the mix as the master gets it: the parts and the buses' return, before the DJ
+     * FILTER, TAPE, EQ, CLIP, the leveler, the limiter and the MASTER knob (as at MASTER_FULL), each block appended
+     * for the audio ISR's half; the glue takes the half and starts again */
+    for (i = 0; i < n && coop_pre_w < 2u * HALF_FRAMES; i++) {
+        coop_pre[coop_pre_w++] = mix_l[i] + wet[i];     /* (Q15, as master_out takes it at MASTER_FULL) */
+        coop_pre[coop_pre_w++] = mix_r[i] + wet[i];
+    }
+#endif
     if (song.g[G_DJF] || djf.mode)                      /* (0.9.1) the DJ FILTER; centred and out: not run */
         djf_block(n);
     if (tape_v[0] || tape_v[1] || tp.drv || tp.wow) {   /* (0.9.9-snd8) TAPE; both 0 (and settled): not run */
