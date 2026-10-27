@@ -189,6 +189,14 @@
         <label><span data-t="lyricSrc"></span> <select id="lyrsrc"></select></label></p>
       <p class="bar"><input id="lyric" maxlength="63" size="56" autocomplete="off" spellcheck="false">
         <button id="lyricsend" data-t="lyricSend"></button></p></div>
+    <div class="group" id="smpbox" hidden><h3 data-t="smpT"></h3>
+      <p class="dim" data-t="smpHelp"></p>
+      <p class="bar"><button id="smpadd" data-t="smpAdd" data-ic="symbol_upload"></button>
+        <input type="file" id="smpfile" accept="audio/*,.wav,.WAV" multiple hidden>
+        <label><span data-t="smpRate"></span> <select id="smprate"><option value="6000">6 kHz</option>
+          <option value="8000" selected>8 kHz</option><option value="11025">11 kHz</option><option value="16000">16 kHz</option></select></label>
+        <button id="smpclear" data-t="smpClear"></button> <button id="smpsend" data-t="smpSend"></button></p>
+      <div id="smplist"></div></div>
   </section>
 
   <section class="panel" id="p-fm6" data-tab="fm6" data-dev hidden>
@@ -348,7 +356,8 @@ const CMD = { INFO: 1, GET: 2, SET: 3, DUMP: 4, DESC: 5, STEP_GET: 6, STEP_SET: 
   UI_STATE: 34, UI_SET: 35, UI_PALETTES: 36, FAV_GET: 37, FAV_SET: 38, LYRIC: 39,
   MOTION: 64, BACKUP_LIST: 65, BACKUP_GET: 66, BACKUP_PUT: 67,
   FM6_GET: 68, FM6_PUT: 69, FM6_LIST: 70, FM6_ERASE: 71,
-  FM6B_BEGIN: 74, FM6B_WRITE: 75, FM6B_END: 76, FM6B_LIST: 77 };   /* (JIANT 0.6.11, Felucca 1.4.1) FM6's voice bank */
+  FM6B_BEGIN: 74, FM6B_WRITE: 75, FM6B_END: 76, FM6B_LIST: 77,   /* (JIANT 0.6.11, Felucca 1.4.1) FM6's voice bank */
+  SMPB_BEGIN: 78, SMPB_WRITE: 79, SMPB_END: 80, SMPB_LIST: 81 };   /* (JIANT par13) SAMPLE's bank */
 /* frames the device sends on its own (while WATCH is on); never replies */
 const PUSH = new Set([CMD.CHANGED, CMD.RELOAD, CMD.STEP_CHANGED, CMD.TRACK_CHANGED]);
 /* user preset bank: name 1..12 printable ASCII, a 16-step pattern of (note, flags 1 acc 2 slide 4 tie) */
@@ -587,6 +596,18 @@ const parse = {
     for (let i = 0; i < o.n; i++) { const used = !!r.b(); o.voices.push({ used, name: r.s() }); }
     return o;
   },
+  /* (JIANT par13) SAMPLE's bank, EDITOR_PROTOCOL.md "SAMPLE bank (78-81)" */
+  [CMD.SMPB_BEGIN](a) { return { rc: a[0] }; },
+  [CMD.SMPB_WRITE](a) { return { rc: a[0] }; },
+  [CMD.SMPB_END](a) { return { rc: a[0], slots: a[1] }; },
+  [CMD.SMPB_LIST](a) {
+    const r = new Reader(a), o = { n: r.b(), size: r.b() * 64, slots: [] };
+    for (let i = 0; i < o.n; i++) {
+      const used = !!r.b(), name = r.s(), n = r.b() | r.b() << 7 | r.b() << 14, rate = r.b() * 100;
+      o.slots.push({ used, name, n, rate });
+    }
+    return o;
+  },
 };
 
 /* (JIANT 0.8.5) a lyric the device takes: printable ASCII, at most 63 characters; accents dropped (the device has none:
@@ -666,6 +687,11 @@ const req = {
   fm6bEnd: (name, crc) => [CMD.FM6B_END, [...String(name ?? "").padEnd(10, " ").slice(0, 10)].map((c) => c.charCodeAt(0) & 0x7F)
     .concat([0, 7, 14, 21, 28].map((sh) => (crc >>> sh) & 0x7F))],
   fm6bList: () => [CMD.FM6B_LIST, []],
+  /* (par13) SAMPLE's bank: BEGIN, WRITEs (offset 3 x 7 bits, each byte two nibbles, low first), END (the bank's CRC) */
+  smpbBegin: () => [CMD.SMPB_BEGIN, []],
+  smpbWrite: (off, bytes) => [CMD.SMPB_WRITE, [off & 0x7F, (off >> 7) & 0x7F, (off >> 14) & 0x7F, ...[...bytes].flatMap((x) => [x & 15, x >> 4])]],
+  smpbEnd: (crc) => [CMD.SMPB_END, [0, 7, 14, 21, 28].map((sh) => (crc >>> sh) & 0x7F)],
+  smpbList: () => [CMD.SMPB_LIST, []],
 };
 
 /* which reply belongs to which request (the device echoes these) */
@@ -1042,6 +1068,87 @@ const fm6Bank = {
       done.push(...packed[k].map((x) => x & 0x7F));
     }
     return parse[CMD.FM6B_END](await rq(req.fm6bEnd(name, crc32(done)), { timeout: 5000, retries: 0 })).rc;
+  },
+};
+/* (JIANT par13) SAMPLE's bank (src/eng_sample.c): SIZE bytes, a 256-byte header (magic "JSMP", ver, count, the data's
+   length, the CRC-32 of header bytes 16.. and the data; 15 entries: offset, samples, rate, a name of 10) and the
+   samples as IMA ADPCM, 4 bits each, low nibble first, each from predictor 0, step index 0 */
+const smpBank = {
+  SIZE: 6144, HEAD: 256, SLOTS: 15,
+  STEP: [7, 8, 9, 10, 11, 12, 13, 14, 16, 17, 19, 21, 23, 25, 28, 31, 34, 37, 41, 45, 50, 55, 60, 66, 73, 80, 88, 97,
+    107, 118, 130, 143, 157, 173, 190, 209, 230, 253, 279, 307, 337, 371, 408, 449, 494, 544, 598, 658, 724, 796,
+    876, 963, 1060, 1166, 1282, 1411, 1552, 1707, 1878, 2066, 2272, 2499, 2749, 3024, 3327, 3660, 4026, 4428,
+    4871, 5358, 5894, 6484, 7132, 7845, 8630, 9493, 10442, 11487, 12635, 13899, 15289, 16818, 18500, 20350,
+    22385, 24623, 27086, 29794, 32767],
+  IDX: [-1, -1, -1, -1, 2, 4, 6, 8],
+  /* Int16 samples -> nibbles (the device's decoder mirrored) */
+  adpcm(x) {
+    const out = new Uint8Array(x.length);
+    let pred = 0, idx = 0;
+    for (let k = 0; k < x.length; k++) {
+      const st = this.STEP[idx];
+      let d = x[k] - pred, nb = 0;
+      if (d < 0) { nb = 8; d = -d; }
+      if (d >= st) { nb |= 4; d -= st; }
+      if (d >= st >> 1) { nb |= 2; d -= st >> 1; }
+      if (d >= st >> 2) nb |= 1;
+      let dd = st >> 3;
+      if (nb & 4) dd += st;
+      if (nb & 2) dd += st >> 1;
+      if (nb & 1) dd += st >> 2;
+      pred = Math.max(-32768, Math.min(32767, pred + (nb & 8 ? -dd : dd)));
+      idx = Math.max(0, Math.min(88, idx + this.IDX[nb & 7]));
+      out[k] = nb;
+    }
+    return out;
+  },
+  /* samples: [{ name, rate, pcm: Int16Array }] -> the bank (Uint8Array SIZE), what did not fit cut */
+  build(samples) {
+    const b = new Uint8Array(this.SIZE), dv = new DataView(b.buffer);
+    let at = 0, count = 0;
+    for (const s of samples.slice(0, this.SLOTS)) {
+      const room = (this.SIZE - this.HEAD - at) * 2;
+      const n = Math.min(s.pcm.length, room, 65535);
+      if (n < 16) break;
+      const nib = this.adpcm(s.pcm.subarray(0, n)), e = 16 + count * 16;
+      for (let k = 0; k < n; k++) b[this.HEAD + at + (k >> 1)] |= nib[k] << ((k & 1) * 4);
+      dv.setUint16(e, at, true); dv.setUint16(e + 2, n, true); dv.setUint16(e + 4, s.rate, true);
+      const nm = String(s.name || "").toUpperCase().replace(/[^\x20-\x7E]/g, "").slice(0, 9);
+      for (let i = 0; i < nm.length; i++) b[e + 6 + i] = nm.charCodeAt(i);
+      at += (n + 1) >> 1;
+      count++;
+    }
+    dv.setUint32(0, 0x504D534A, true); dv.setUint16(4, 1, true); dv.setUint16(6, count, true); dv.setUint32(8, at, true);
+    dv.setUint32(12, crc32(b.subarray(16, this.HEAD + at)), true);
+    return { bytes: b, count, used: this.HEAD + at };
+  },
+  /* an audio file -> mono Int16 at rate, its silence at both ends trimmed, the peak at -1 dB */
+  async decode(file, rate) {
+    const ac = new (window.AudioContext || window.webkitAudioContext)();
+    let buf;
+    try { buf = await ac.decodeAudioData(await file.arrayBuffer()); } finally { ac.close && ac.close(); }
+    const len = Math.max(1, Math.ceil(buf.duration * rate));
+    const oc = new OfflineAudioContext(1, len, rate), src = oc.createBufferSource();
+    src.buffer = buf; src.connect(oc.destination); src.start();
+    const y = (await oc.startRendering()).getChannelData(0);
+    let peak = 0, a = 0, z = y.length;
+    for (const v of y) peak = Math.max(peak, Math.abs(v));
+    const th = peak * 0.02;
+    while (a < z && Math.abs(y[a]) < th) a++;
+    while (z > a && Math.abs(y[z - 1]) < th) z--;
+    const g = peak ? 0.89 / peak : 1, pcm = new Int16Array(z - a);
+    for (let k = a; k < z; k++) pcm[k - a] = Math.round(Math.max(-1, Math.min(1, y[k] * g)) * 32767);
+    return pcm;
+  },
+  async list(rq) { return parse[CMD.SMPB_LIST](await rq(req.smpbList())); },
+  async send(rq, bytes) {
+    let rc = parse[CMD.SMPB_BEGIN](await rq(req.smpbBegin(), { timeout: 3000, retries: 0 })).rc;
+    if (rc) return rc;
+    for (let off = 0; off < bytes.length; off += 64) {
+      rc = parse[CMD.SMPB_WRITE](await rq(req.smpbWrite(off, bytes.subarray(off, off + 64)), { timeout: 2000, retries: 0 })).rc;
+      if (rc) return rc;
+    }
+    return parse[CMD.SMPB_END](await rq(req.smpbEnd(crc32(bytes)), { timeout: 8000, retries: 0 })).rc;
   },
 };
 const bank = {
@@ -1538,7 +1645,7 @@ function makeMockDevice(opt = {}) {
     E("MIDI", ["USB", "TRS"], 0), D("REL", F.PCT, 0, 100, 30),   /* G_DREL (was SYNC): DUCK's release */ E("ROUTE", ["CH1-6", "SEL"], 0), D("CPU", F.INT, 0, 0, 0),
     D("SLOT", F.INT, 1, 4, 1), D("DJ FILT", F.BIPCT, -64, 63, 0), E("LOAD", NGO, 0), E("SAVE", NGO, 0),   /* (0.9.1) G_DJF 17 (was NAME, "--"): the master DJ FILTER */
     E("ENG", ["ANALOG", "-", "PHASE", "LOFI", "-", "VOICE", "-", "WHEEL",
-      "STRING", "-", "DRUM", "NOISE", "FM6", "-", "ANIMAL"], 0), D("CLIP", F.PCT, 0, 100, 0),   /* G_CLIP (was SET); 0.8.3 ANIMAL; snd5 STRING 8 ADD 13 */
+      "STRING", "-", "DRUM", "NOISE", "FM6", "SAMPLE", "ANIMAL"], 0), D("CLIP", F.PCT, 0, 100, 0),   /* G_CLIP (was SET); 0.8.3 ANIMAL; snd5 STRING 8 ADD 13 */
     E("CLRSQ", NGO, 0), E("INIT", NGO, 0),
     E("TYPE", ["ROOM", "SPRING", "SHIMR", "RESO", "CLOUD"], 0),               /* G_RTYPE (id 24, was G_DRCH): the reverb's model */
     D("PUNCH", F.PCT, 0, 100, 0), D("DUCK", F.PCT, 0, 100, 0),   /* G_PUNCH, G_DUCK (JIANT; were G_DRLVL, G_DRREV) */
@@ -1677,10 +1784,14 @@ function makeMockDevice(opt = {}) {
         P("FM PLUCK", [0, 0, 20, 0, -20, 0, 0, 7], [0, 0, 127, 0], 0, 3), P("SOFT BELL", [0, 0, -25, 0, 0, 0, 20, 1], [0, 0, 127, 0], 0, 7),
         P("FM STRINGS", [0, 0, -10, 0, 0, 0, 35, 4], [0, 0, 127, 0], 0, 5), P("HARD BASS", [0, 2, 25, 0, 0, 0, 0, 2], [0, 0, 127, 0], 1, 2),
         P("WOOD", [0, 0, -15, 0, 0, 0, 0, 5], [0, 0, 127, 0], 0, 3)] },
-    /* 13: reserved (ADD 0.9.9-snd5 .. par10, retired in par11 for STRING's FDBK; SLICE's before it: its sounds load as ANALOG) */
-    { name: "-", titles: ["-", "-"], edit: [D("-", F.INT, 0, 127, 0), D("-", F.INT, 0, 127, 0), D("-", F.INT, 0, 127, 0),
-        D("-", F.INT, 0, 127, 0), D("-", F.INT, 0, 127, 0), D("-", F.INT, 0, 127, 0), D("-", F.INT, 0, 127, 0), D("-", F.INT, 0, 127, 0)],
-      presets: [] },
+    /* 13: SAMPLE (JIANT par13, src/eng_sample.c; generated from it): the owner's samples, hyper lo-fi (ADD's number
+       0.9.9-snd5 .. par10, SLICE's before); SLOT's names are the device's bank (here as a bank-less device shows them) */
+    { name: "SAMPLE", titles: ["SAMPLE", "LOFI"], edit: [E("SLOT", Array(15).fill("-"), 0),
+        D("START", F.PCT, 0, 127, 0), D("LENGTH", F.PCT, 0, 127, 127), E("LOOP", ["OFF", "ON"], 0),
+        D("BITS", F.PCT, 0, 127, 0), D("RATE", F.PCT, 0, 127, 0), D("DRIVE", F.PCT, 0, 127, 0), E("KEYS", ["PITCH", "SLOTS"], 0)],
+      presets: [P("SAMPLE", [0, 0, 127, 0, 0, 0, 0, 0], [0, 64, 127, 20], 0, 4), P("KIT KEYS", [0, 0, 127, 0, 0, 0, 0, 1], [0, 64, 127, 10], 0, 1),
+        P("8 BIT", [0, 0, 127, 0, 60, 8, 0, 0], [0, 64, 127, 20], 0, 4), P("CRUSH", [0, 0, 127, 0, 100, 40, 60, 0], [0, 64, 127, 20], 0, 4),
+        P("LOOP PAD", [0, 20, 60, 1, 20, 0, 0, 0], [40, 64, 127, 70], 0, 5), P("SAMP BASS", [0, 0, 127, 0, 30, 0, 40, 0], [0, 64, 127, 15], 1, 2)] },
     /* 14: ANIMAL (JIANT 0.8.3, src/eng_animal.c; generated from it): animal calls, five sources (MODE); the labels as the
        device shows them per MODE (animal_desc) are the device's; here the engine's own */
     { name: "ANIMAL", titles: ["SRC", "CALL"], edit: [E("MODE", ["CMOS", "PULSE", "WHSTL", "WING", "GLOTT"], 0),
@@ -1809,7 +1920,7 @@ function makeMockDevice(opt = {}) {
   }
   function setEngine(ei) {
     if (ei % ENG.length === 1) { fm4Load(0); return; }   /* DIGITAL (retired): its first preset, as FM6 (ui.c set_engine_of) */
-    if ([4, 9, 13].includes(ei % ENG.length)) ei = 0;   /* PHYS SAMPLE, (par11) ADD (retired, core.h eng_gone): ANALOG; (snd5) 8: STRING */
+    if ([4, 9].includes(ei % ENG.length)) ei = 0;       /* PHYS SAMPLE (retired, core.h eng_gone): ANALOG; (snd5) 8 STRING; (par13) 13 SAMPLE */
     st.engine = ei % ENG.length;
     for (let i = 0; i < 8; i++) st.p[P_E0 + i] = ENG[st.engine].edit[i].def;
     applyPreset(0);
@@ -2361,7 +2472,7 @@ function enumShown(d) {
 /* the order the device shows its engines in (src/engines.c ENGINE_ORDER): the lists here follow it, the protocol keeps
    the engine numbers. engineOrder(names): the indices of names in that order, "-" (a reserved number) left out; a name
    the list does not know (another firmware) follows in index order */
-const ENGINE_ORDER = ["DRUM", "VOICE", "ANIMAL", "LOFI", "ANALOG", "FM6", "PHASE", "WHEEL", "NOISE", "STRING", "DIGITAL"];   /* (0.9.9: DRUM-X, VOICE,
+const ENGINE_ORDER = ["DRUM", "VOICE", "ANIMAL", "LOFI", "ANALOG", "FM6", "PHASE", "WHEEL", "NOISE", "STRING", "SAMPLE", "DIGITAL"];   /* (0.9.9: DRUM-X, VOICE,
    ANIMAL first, as the parts at power-on; DIGITAL, FELUCCA_FM4 builds only, last; was ANALOG FM6 DIGITAL PHASE LOFI VOICE WHEEL NOISE
    DRUM ANIMAL, the order PROGRAM CHANGE still numbers the sounds in: engines.c ENGINE_PC_ORDER) */
 function engineOrder(names) {
@@ -2444,6 +2555,7 @@ const TEXT = {
     fm6Init: "初期音色", fm6Voice: "ボイス", fm6Ops: "オペレーター", fm6Carriers: "キャリア", fm6Feedback: "フィードバック",
     fm6PitchEg: "ピッチ EG", fm6Freq: "周波数",
     fm6Legend: "R1〜R4 / L1〜L4: EG のレートとレベル、BP LD RD LC RC: キーボードレベルスケーリング、RS: レートスケーリング、AMS: LFO 音量変調、KVS: ベロシティ、OL: 出力レベル、MODE: 比率 / 固定、FC FF: 周波数（粗・細）、DET: デチューン（7 が中央）。● はキャリア。",
+    smpT: "SAMPLE: 自分のサンプル", smpHelp: "SAMPLE エンジン用の超ローファイなサンプル。WAV を選び（モノ、無音カット、ノーマライズ）、レートを選んで送ります。8 kHz で合計約 1.5 秒、15 スロット。入らない部分はカットされます。電源を切っても本体に残ります。", smpAdd: "オーディオファイルを追加", smpRate: "レート", smpClear: "クリア", smpSend: "本体へ送る", smpUsed: "バンク:", smpNow: "本体:", smpNone: "送るものがありません", smpFail: "サンプルを送れませんでした (rc ", smpSent: "サンプルを送りました:",
     fm6BankSend: "本体のボイスバンクへ送る (B1–B32)", fm6BankSent: "ボイスバンクを送りました:", fm6BankFail: "ボイスバンクを送れませんでした (rc ", fm6BankNow: "本体のボイスバンク:", fm6BankNone: "なし",
     fm6Pick: "読み込んだファイルの音色（押すと編集へ）:", fm6Picked: "編集中:", fm6Sent: "トラックへ送りました:", fm6Read: "トラックから読みました",
     fm6Loaded: "読み込みました", fm6BadSum: "チェックサム不一致あり",
@@ -2547,6 +2659,7 @@ const TEXT = {
     fm6Init: "Init voice", fm6Voice: "Voice", fm6Ops: "Operators", fm6Carriers: "carriers", fm6Feedback: "feedback",
     fm6PitchEg: "Pitch EG", fm6Freq: "Frequency",
     fm6Legend: "R1..R4 / L1..L4: EG rates and levels; BP LD RD LC RC: keyboard level scaling; RS: rate scaling; AMS: LFO amplitude modulation; KVS: velocity; OL: output level; MODE: ratio / fixed; FC FF: coarse / fine frequency; DET: detune (7 = centre). ● = carrier.",
+    smpT: "SAMPLE: your samples", smpHelp: "Hyper lo-fi samples for the SAMPLE engine: pick WAV files (mono, trimmed, normalised), choose a rate and send them. About 1.5 s in all at 8 kHz, 15 slots; what does not fit is cut. They stay on the device after power-off.", smpAdd: "Add audio files", smpRate: "Rate", smpClear: "Clear", smpSend: "Send to the device", smpUsed: "Bank:", smpNow: "On the device:", smpNone: "Nothing to send", smpFail: "The samples were not sent (rc ", smpSent: "Samples sent:",
     fm6BankSend: "Send to the device's voice bank (B1–B32)", fm6BankSent: "Voice bank sent:", fm6BankFail: "The voice bank was not sent (rc ", fm6BankNow: "The device's voice bank:", fm6BankNone: "none",
     fm6Pick: "Voices of the imported file (click to edit):", fm6Picked: "Editing:", fm6Sent: "Sent to track", fm6Read: "Read from track",
     fm6Loaded: "Loaded", fm6BadSum: "a checksum did not match",
@@ -2711,7 +2824,48 @@ function renderPanels() {
   $("trackbar").hidden = !(ready && hasTracks() && TRACK_TABS.has(want));
   /* the FM6 slot names: listed once the tab shows with a device (also when it was already open at connect) */
   if (ready && want === "fm6" && dev.info.fm6 && !fm6List && !fm6Asked) { fm6Asked = true; op(fm6Refresh); }
+  if (ready && want === "sound") renderSmp();
 }
+/* (JIANT par13) SAMPLE's bank: the files picked here (decoded at the rate chosen), the device's bank as listed */
+let smpPicked = [], smpDevice = null, smpAsked = false;
+function smpOk() { return !!dev && !!dev.info && (dev.info.engines || [])[13] === "SAMPLE"; }
+function renderSmp() {
+  const box = $("smpbox");
+  box.hidden = !smpOk();
+  if (box.hidden) return;
+  if (!smpAsked) { smpAsked = true; op(smpRefresh); }
+  const built = smpBank.build(smpPicked);
+  const rows = smpPicked.map((s, k) => el("p", { class: k < built.count ? "" : "dim",
+    text: `${k + 1} ${s.name} · ${(s.pcm.length / s.rate).toFixed(2)} s${k < built.count ? "" : " ✕"}` }));
+  const dl = smpDevice ? smpDevice.slots.filter((x) => x.used) : [];
+  rows.push(el("p", { class: "dim", text: `${t("smpUsed")} ${built.used} / ${smpBank.SIZE} B` }));
+  rows.push(el("p", { class: "dim", text: `${t("smpNow")} ${dl.length ? dl.map((x, k) => `${k + 1} ${x.name}`).join(" · ") : "-"}` }));
+  $("smplist").replaceChildren(...rows);
+}
+async function smpRefresh() {
+  if (!smpOk()) return;
+  smpDevice = await smpBank.list((r, o) => sessionRequest(dev, r, o));
+  renderSmp();
+}
+$("smpadd").addEventListener("click", () => $("smpfile").click());
+$("smpfile").addEventListener("change", (e) => op(async () => {
+  const rate = +$("smprate").value;
+  for (const f of [...e.target.files]) {
+    if (smpPicked.length >= smpBank.SLOTS) break;
+    smpPicked.push({ name: f.name.replace(/\.[^.]*$/, ""), rate, pcm: await smpBank.decode(f, rate) });
+  }
+  e.target.value = "";
+  renderSmp();
+}));
+$("smpclear").addEventListener("click", () => { smpPicked = []; renderSmp(); });
+$("smpsend").addEventListener("click", () => op(async () => {
+  const built = smpBank.build(smpPicked);
+  if (!built.count) { sayK("smpNone"); return; }
+  const rc = await smpBank.send((r, o) => sessionRequest(dev, r, o), built.bytes);
+  if (rc) { sayK("smpFail", `${rc})`); return; }
+  await smpRefresh();
+  sayK("smpSent", ` ${built.count}`);
+}));
 $("tabs").addEventListener("click", (e) => { const b = e.target.closest("button[data-tab]"); if (b) showTab(b.dataset.tab); });
 $("tabs").addEventListener("keydown", (e) => {          /* arrow keys move between the tabs */
   const dir = { ArrowRight: 1, ArrowLeft: -1 }[e.key];

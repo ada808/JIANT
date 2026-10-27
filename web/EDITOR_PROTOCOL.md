@@ -950,6 +950,24 @@ the device's autosave took the transfer's flash between two requests, after 10 s
   its range); an empty slot of a shorter file is not written. Flash: the bank is at 0xE7000; a transfer is staged in
   the autosave's older sector first (0xE5000 / 0xE6000), which the next autosave writes over anyway.
 
+## SAMPLE bank (78-81; JIANT 0.9.9-par13)
+
+SAMPLE (engine 13) plays the owner's samples from one bank of 6144 bytes, the same in RAM and in flash (0xDA000,
+src/sample_bank.c). The editor builds the bank and sends it whole:
+
+- bytes 0..15: magic `0x504D534A` ("JSMP", little-endian), version 1 (u16), the slots used (u16, from 0), the data's
+  length in bytes (u32), the CRC-32 of bytes 16 .. 256 + length (u32);
+- bytes 16..255: 15 entries of 16 bytes: the sample's first byte in the data (u16), its samples (u16), its rate in Hz
+  (u16, 4000..16000), its name (10 bytes, ASCII, 0-padded; the knob shows 5);
+- bytes 256..: the samples, IMA ADPCM, 4 bits each (the low nibble first), each sample from predictor 0, step index 0.
+
+| Cmd | Args | Reply |
+|---|---|---|
+| 78 SMPB_BEGIN | — | rc. The RAM bank cleared; SAMPLE silent until END |
+| 79 SMPB_WRITE | offset (3 x 7 bits), then up to 64 bytes, each as two 7-bit bytes (its low nibble, its high nibble) | rc: 0, 1 bad arguments or out of the bank, 5 no transfer |
+| 80 SMPB_END | the CRC-32 of the whole bank (6144 bytes; 5 x 7 bits, low first) | rc, the slots playable. rc 0: it plays and is in flash; 2 the CRC or no bank in it (SAMPLE silent); 3 playback did not stop; 4 flash (it plays until power-off); 5 no transfer. Allow 2 s (two sectors erased) |
+| 81 SMPB_LIST | — | 15, the bank's size / 64, then per slot: used, its name (0-terminated), its samples (3 x 7 bits), its rate / 100 |
+
 ## VOICE words and LYRIC (39; JIANT 0.8.5)
 
 The VOICE engine (5) sings syllables, words and lyrics (`firmware/src/sing.c`). Its two settings are track parameters
