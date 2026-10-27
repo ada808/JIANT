@@ -26,12 +26,13 @@ enum { SX_NOISE, SX_PLUCK, SX_PICK, SX_HAMMER, SX_MALLET, SX_FDBK, SX_N };
  * page becomes the amp's. GAIN how much comes back, DIST the amp's drive (a soft clip: the loop's own limiter),
  * SPEAKR where along the period the speaker's sound meets the string (which harmonic it blooms into), BLOOM how slowly
  * the feedback grows while the key is held. BRIGHT stays the tone. No memory more: the speaker's tap is the line. */
-static const param_desc_t STR_AMP[4] = {
+static const param_desc_t STR_AMP[5] = {
+    {"MOVE", F_PCT, 0, 127, 28, 0, 0},                /* (par12) POS: the guitar swayed before the amp */
     {"GAIN", F_PCT, 0, 127, 0, 0, 0}, {"DIST", F_PCT, 0, 127, 40, 0, 0},
     {"SPEAKR", F_PCT, 0, 127, 40, 0, 0}, {"BLOOM", F_PCT, 0, 127, 0, 0, 0}};
 static const param_desc_t *string_desc(const track_t *t, uint32_t k)
 {
-    return k >= 4u && t->p[P_E0] == SX_FDBK ? &STR_AMP[k - 4u] : 0;
+    return k >= 3u && t->p[P_E0] == SX_FDBK ? &STR_AMP[k - 3u] : 0;
 }
 
 static int16_t *str_line(const track_t *t, const voice_t *v)
@@ -88,9 +89,11 @@ static void string_note_on(track_t *t, voice_t *v)
     int16_t *b = str_line(t, v);
     uint32_t d, per = str_period(pitch_inc((uint32_t)clamp(v->pitch16, 0, 2047)), &d), n = per >> 8, mode = (uint32_t)p[P_E0] % SX_N;
     uint32_t i, w, pp, wd;
+    int32_t pos = clamp(p[P_E3], 0, 127);
     if (mode == SX_FDBK) {                               /* (p10) plucked; the feedback grows again from 0 */
         mode = SX_PLUCK;
         v->s[6] = 0;
+        pos = 24;                                        /* (par12: POS is MOVE; plucked near the bridge) */
     }
     int32_t nz = (int32_t)(v->note * 2654435761u + 0x9E37u) | 1, nz2, lp = 0, lp2 = 0, amp = 9000 + v->vel * 90, sum = 0, k, mean;
     int32_t br = clamp(p[P_E2] + v->vel / 4 - 16, 0, 127);
@@ -105,7 +108,7 @@ static void string_note_on(track_t *t, voice_t *v)
         nz = (int32_t)v->ph[0] | 1;
     if (n < 2u)
         n = 2;
-    pp = 2u + (n * (uint32_t)clamp(p[P_E3], 0, 127)) / 256u;
+    pp = 2u + (n * (uint32_t)pos) / 256u;
     wd = mode == SX_HAMMER ? n / 8u + 1u : n / 3u + 1u;
     k = 4000 + br * 225;                                 /* (PLUCK's noise low-passed, brighter with BRIGHT and the velocity) */
     nz2 = nz;
@@ -114,7 +117,7 @@ static void string_note_on(track_t *t, voice_t *v)
                                                          * noise POS samples behind: a comb, without a buffer) */
         uint32_t q = (w + ST_SL - n + i) % ST_SL;
         int32_t e = str_exc(mode, i, n, pp, wd, (int32_t)(noise32(&nz) >> 17) - 16384, &lp, k);
-        if (mode <= SX_PLUCK && p[P_E3] && i >= pp)
+        if (mode <= SX_PLUCK && pos && i >= pp)
             e -= str_exc(mode, i - pp, n, pp, wd, (int32_t)(noise32(&nz2) >> 17) - 16384, &lp2, k);
         e = (e * amp) >> 14;
         sum += e;
@@ -135,16 +138,25 @@ static void string_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
     uint32_t d, per = str_period(m->inc, &d), D = 1u << d, i, w = v->ph[1] % ST_SL, cnt = (v->ph[1] >> 8) & 63u;
     int32_t lp = v->s[0], r1 = v->s[1], apx = v->s[2], apy = v->s[3], y0 = v->s[4], y1 = v->s[5], bl = v->s[6], bb = v->s[7];
     int32_t dc = (int32_t)v->ph[2], nst = (int32_t)v->ph[0] | 1, bow = v->gate ? clamp(p[P_E7], 0, 127) : 0, body = clamp(p[P_E5], 0, 127), bf;
-    int32_t fb = p[P_E0] == SX_FDBK, fk = 0, fdr = 0;
-    uint32_t ft = 0;
+    int32_t fb = p[P_E0] == SX_FDBK, fk = 0, fdr = 0, fdo = 0, fol = 0, fz0 = 0, mvo = 0;
+    uint32_t ft = 0, mv = v->ph[0];
     int32_t br = clamp(p[P_E2] + ((m->shape - (64 << 8)) >> 8), 0, 127), a = 5000 + br * 218;
     int32_t s15 = clamp(p[P_E4], 0, 127) * 193, comp, dly, di, fr, g, pk = 0;
     if (fb) {                                            /* (p10) FDBK: the BODY page is the amp's */
-        bl = v->gate ? bl + (8192 >> (clamp(p[P_E7] - v->vel / 4, 0, 127) / 12)) : bl - (bl >> 3);   /* BLOOM: 6 ms .. 6 s up
-                                                         * (par11: a harder hit blooms sooner) */
+        int32_t mk = clamp(p[P_E3], 0, 127), dv = clamp(p[P_E5], 0, 127);
+        if (v->gate)                                     /* BLOOM: 6 ms .. 6 s up (par11: a harder hit blooms sooner); (par12)
+                                                         * let go, it stays: the ADSR's RELEASE is the feedback's */
+            bl += 8192 >> (clamp(p[P_E7] - v->vel / 4, 0, 127) / 12);
         bl = clamp(bl, 0, 32767);
         fk = (clamp(p[P_E4], 0, 127) * (bl >> 7)) >> 2;    /* GAIN x the bloom (Q15 / 4: a quarter at most a pass) */
-        fdr = 256 + clamp(p[P_E5], 0, 127) * 24;           /* DIST: x1 .. x13 into the clip */
+        fdr = 256 + dv * 24;                               /* DIST: x1 .. x13 into the clip */
+        fdo = 256 + ((dv * dv) >> 2);                      /* (par12) and the amp heard: x1 .. x17 into a fuzz */
+        fol = 8192 + 24576 * 256 / fdo;                    /* (its level kept: -11 dB at the most) */
+        fz0 = clamp(fdo * 3, -32767, 32767);
+        fz0 = (3 * fz0 - ((((fz0 * fz0) >> 15) * fz0) >> 15)) >> 1;
+        mv += (uint32_t)(mk * mk) << 10;                   /* (par12) MOVE: ~0.07 .. 2.7 Hz, two sines: the speaker's
+                                                         * distance swaying (+-48 of SPEAKR at the most) */
+        mvo = ((sine_i(mv) + (sine_i(mv * 3u + 0x40000000u) >> 1)) * mk) >> 17;
         s15 = 0;
         bow = 0;
         body = 0;
@@ -155,13 +167,13 @@ static void string_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
         dly = 2 << 8;
     di = dly >> 8;
     fr = dly & 255;
-    ft = 1u + (((uint32_t)di * (12u + 2u * (uint32_t)clamp(p[P_E6] + (fb ? (m->shape - (64 << 8)) >> 8 : 0), 0, 127))) >> 8);
+    ft = 1u + (((uint32_t)di * (12u + 2u * (uint32_t)clamp(p[P_E6] + mvo + (fb ? (m->shape - (64 << 8)) >> 8 : 0), 0, 127))) >> 8);
     /* SPEAKR: 0.05 .. 1 period back; (par11) LFO / ENV -> SHAPE move it too: the guitar walked to and from the amp, the
      * feedback jumping from harmonic to harmonic */
     if (ft > ST_SL - 2u)
         ft = ST_SL - 2u;
     g = str_gain(per << d, p[P_E1]);
-    if (!v->gate) {                                      /* (p5) let go: RELEASE the damper (low: a palm mute; high: it
+    if (!v->gate && !fb) {                               /* (p5) let go: RELEASE the damper (FDBK: the ADSR's) (low: a palm mute; high: it
                                                          * rings its DECAY out) */
         g = (g * str_gain(per << d, p[P_REL])) >> 15;   /* (both < 2^15: in 32 bits) */
         if ((v->ph[1] >> 16) < 512u)                     /* (under ~-36 dB: damped out, no limit cycle left ringing) */
@@ -209,19 +221,32 @@ static void string_render(track_t *t, voice_t *v, int32_t *out, uint32_t n, cons
             bb = clamp(bb, -65536, 65536);
             s += (bb * body) >> 8;
         }
-        if (fk)                                          /* (FDBK's loop rides at the clip: -15 dB once bloomed, beside a
-                                                         * pluck) */
-            s = (s * (32 - ((bl * 26) >> 15))) >> 5;
+        if (fb) {                                        /* (par12) the amp heard: the string into a fuzz ((3x - x^3) / 2,
+                                                         * biased: a tube's even harmonics), its level kept; the loop
+                                                         * rides at the clip: -15 dB once bloomed, beside a pluck */
+            int32_t c = clamp(((s * fdo) >> 8) + fdo * 3, -32767, 32767);
+            c = ((3 * c - ((((c * c) >> 15) * c) >> 15)) >> 1) - fz0;   /* (less the bias's own: no step at the note) */
+            s = (((c * fol) >> 15) * (32 - ((bl * 26) >> 15))) >> 5;
+        }
         dc += ((s << 12) - dc) >> 10;                    /* (the output's DC blocked: ~7 Hz; Q12, what sticks under a
                                                          * quarter of a step: rounded away) */
         s -= (dc + 2048) >> 12;
         pk = s > pk ? s : -s > pk ? -s : pk;
         out[i] += voice_amp(s, m, i);
     }
-    v->ph[0] = (uint32_t)nst;
+    v->ph[0] = fb ? mv : (uint32_t)nst;
     v->ph[1] = w | cnt << 8 | (uint32_t)(pk > 65535 ? 65535 : pk) << 16;   /* (p5: the block's peak, string_done) */
     v->ph[2] = (uint32_t)dc;
     v->s[0] = lp; v->s[1] = r1; v->s[2] = apx; v->s[3] = apy; v->s[4] = y0; v->s[5] = y1; v->s[6] = bl; v->s[7] = bb;
+}
+/* (par12) the amplitude: FDBK the ADSR (ATTACK fades it in, RELEASE the feedback's), the other EXCITEs their own (the
+ * ADSR held at full: the string rings past the step, RELEASE its damper) */
+static int32_t string_amp(track_t *t, voice_t *v, int32_t adsr)
+{
+    if (t->p[P_E0] == SX_FDBK || v->stage == 4u)
+        return adsr;
+    v->env = 1 << 24;
+    return 32767;
 }
 /* (p5) the string its own amplitude (ownenv): the voice ends once let go and silent (its last block's peak ~-66 dB) */
 static int string_done(track_t *t, voice_t *v)
@@ -279,4 +304,5 @@ static const engine_t ENG_STRING = {
     .ownenv = 1,                                         /* (p5: RELEASE its damper; the sequencer's short gates let it ring) */
     .done = string_done,
     .desc = string_desc,
+    .amp = string_amp,
 };

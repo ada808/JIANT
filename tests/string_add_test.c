@@ -222,6 +222,20 @@ static void string_fdbk(void)
     snprintf(what, sizeof what, "STRING FDBK: GAIN 0 dies out (%.4f), GAIN 60 / 127 sustain at 3 s (%.3f %.3f), under full scale",
              r[0][1], r[1][1], r[2][1]);
     check(what, r[0][1] < r[0][0] * 0.1 && r[1][1] > 0.02 && r[2][1] > r[1][1] * 0.8 && top < 1.0);
+    {   /* (par12) FDBK keeps the ADSR: ATTACK fades it in (a pluck's EXCITE does not: its own amplitude) */
+        int16_t e[8] = {SX_FDBK, 40, 80, 24, 100, 70, 40, 20};
+        double a0, a1;
+        setup(-1, e);
+        trk[0].p[P_ATK] = 100;
+        voice_render(52, 0, y, FS / 50);
+        a0 = rms(y, FS / 50, 0);
+        setup(-1, e);
+        trk[0].p[P_ATK] = 100;
+        voice_render(52, 1.0, y, FS / 50);
+        a1 = rms(y, FS / 50, 0);
+        snprintf(what, sizeof what, "STRING FDBK: ATTACK fades it in (the first 20 ms %.4f, at 1 s %.4f)", a0, a1);
+        check(what, a0 < a1 * 0.3);
+    }
 }
 
 static void string_tune(void)

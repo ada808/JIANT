@@ -1444,7 +1444,8 @@ static uint32_t voice_block(track_t *t, const engine_t *e, voice_t *v, int32_t *
                 v->env = v->env_out = 0;
                 return 0;
             }
-            if (v->stage != 4u) {                   /* (0.6.74: given up, env_tick's fade) */
+            if (v->stage != 4u && !e->amp) {        /* (0.6.74: given up, env_tick's fade; par12: an engine with its own
+                                                     * amp() decides, STRING's FDBK keeps the ADSR) */
                 v->env = 1 << 24;                   /* (the ADSR's release never ends it) */
                 env = 32767;
             }
