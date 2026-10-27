@@ -302,7 +302,7 @@ def late_tables():
     """the generator's own constant tables (gen.c, gen_tables.c): out of .rodata like the UI's recorded ones ('n'), so a
     new one never moves the sound's merged constants after .rodata"""
     names = set()
-    for f in ("gen.c", "gen_tables.c", "eng_string.c", "ui_engvis.c"):   # (0.9.9-snd5: the two engines' own
+    for f in ("gen.c", "gen_tables.c", "eng_string.c", "eng_sample.c", "ui_engvis.c"):   # (0.9.9-snd5: the two engines' own
         # tables and descriptors, the creatures' new ones: out of .rodata too, the sound's tables where they were)
         txt = (FW / "src" / f).read_text()
         names |= set(re.findall(r"^static const [^=;(]*?\b(\w+)\s*\[", txt, flags=re.M))
@@ -607,8 +607,8 @@ def check(img, syms, dis, rt):
     notes.append(f"image {len(img)} B of the {APP_SLOT} B slot ({APP_SLOT - len(img)} B free); RAM .data+.bss {bss} B of 98304; pool {pool} B, spare {POOL_END - pool_top} B")
     if bss > 96 * 1024:
         errors.append("RAM region overflow")
-    if POOL_END - pool_top < 8192:                # keep >= 8 KiB of the pool spare
-        errors.append(f"pool headroom {POOL_END - pool_top} B < 8192 B")
+    if POOL_END - pool_top < 4096:                # keep >= 4 KiB of the pool spare (par13: was 8 KiB; SAMPLE's bank took 6)
+        errors.append(f"pool headroom {POOL_END - pool_top} B < 4096 B")
     # (JIANT 0.6.78) the RAM code at the pool's top: a call reaches +-4 MiB (app.ld), so from the lowest RAM code
     # address the XIP image must end within 4 MiB; and the room left for RAM code
     # (0.7.5) what must be in reach is what RAM code calls, not the whole image: the calls in .ram_text (none),

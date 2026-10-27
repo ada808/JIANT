@@ -302,6 +302,7 @@ static int ed_flash_stop(void)
 #include "editor_preferences.c"
 #include "editor_backup.c"
 #include "editor_fm6.c"
+#include "editor_sample.c"        /* (par13) SAMPLE's bank */
 #include "editor_menu.c"
 
 /* MOTION's reply: the records of track k as (step, id, v14), a lock's id without its MOTION_LOCK bit (a 7-bit SysEx
@@ -386,6 +387,7 @@ static void ed_handle(const uint8_t *f, uint32_t n)   /* f: the bytes between F0
     if (ed_ui_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_backup_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_fm6_handle(cmd, a, na)) { ed_send(); return; }
+    if (ed_smp_handle(cmd, a, na)) { ed_send(); return; }
     if (ed_menu_handle(cmd, a, na)) { ed_send(); return; }
     switch (cmd) {
     case ED_MOTION: {

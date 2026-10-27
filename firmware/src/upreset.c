@@ -258,6 +258,7 @@ static void up_values(const up_rec_t *r, int16_t *v)   /* mapped and clamped for
 
 #include "up_fm6.c"                            /* the FM6 user presets' patches: the same kind of store */
 #include "fm6_vbank.c"                         /* FM6's voice bank (SLOT B1..B32; JIANT 0.6.11, from Felucca 1.4.1) */
+#include "sample_bank.c"                       /* (par13) SAMPLE's bank: flash 0xDA000, played from RAM */
 
 static void up_boot(void)                      /* persist_boot: the banks from flash */
 {
@@ -268,6 +269,7 @@ static void up_boot(void)                      /* persist_boot: the banks from f
 #endif
     upf_boot();                                  /* (after the banks: it may move the retired FM6 bank's patches) */
     fvb_boot();                                  /* FM6's voice bank: a staged one finished, its voices */
+    smp_boot();                                  /* (par13) SAMPLE's bank into RAM */
 #ifdef FELUCCA_FAVORITES
     for (uint32_t k = 0; k < UP_SLOTS; k++)
         if (!up_used(k)) favorite_set(NENGINES, k, 0);

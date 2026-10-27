@@ -368,6 +368,8 @@ if [ -f build/gen/felucca_tables.h ]; then
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/string_add_test" tests/string_add_test.c -lm
     mkdir -p build/string_add_demo
     run "STRING ADD (0.9.9-snd5): in tune C1 .. C6, DECAY's T60, BRIGHT, the COMB TYPE, partials, tilt, EVEN, DAMP, no alias, presets, corners, demos" "$OUT/string_add_test" build/string_add_demo
+    $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/sample_test" tests/sample_test.c -lm
+    run "SAMPLE (par13): the bank indexed, PITCH, LOOP, LENGTH, KEYS SLOTS, BITS / RATE, the transfer and its CRC, a bad bank silent" "$OUT/sample_test"
     $CC -O2 -w -Ibuild/gen -Ifirmware/src -o "$OUT/voice_test" tests/voice_test.c -lm
     mkdir -p build/voice_demo
     run "VOICE words: ES / JA / EN reading, the generator, formants, fricatives, plosives, clicks, DC, the lyric, POS, LOOP, demos" "$OUT/voice_test" build/voice_demo
